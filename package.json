@@ -1,0 +1,26 @@
+{
+  "name": "basketball-3d-pro",
+  "version": "1.0.0",
+  "description": "Professional 3D Basketball Game built with Three.js - Custom Physics Engine",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "build": "echo 'Static build ready'"
+  },
+  "dependencies": {
+    "express": "^4.22.1"
+  },
+  "keywords": [
+    "basketball",
+    "3d",
+    "threejs",
+    "game",
+    "physics"
+  ],
+  "author": "Professional Game Studio",
+  "license": "MIT",
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}

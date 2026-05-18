@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Basketball 3D Pro — Professional Basketball Game</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <!-- Loading Screen -->
+  <div id="loading-screen">
+    <div class="loading-content">
+      <div class="ball-icon">🏀</div>
+      <h1>BASKETBALL 3D PRO</h1>
+      <div class="loading-bar-container">
+        <div class="loading-bar" id="loading-bar"></div>
+      </div>
+      <p id="loading-text">Initializing game engine...</p>
+    </div>
+  </div>
+
+  <!-- Main Menu -->
+  <div id="main-menu" class="hidden">
+    <div class="menu-overlay"></div>
+    <div class="menu-content">
+      <div class="menu-logo">
+        <span class="ball-emoji">🏀</span>
+        <h1>BASKETBALL<br/><span>3D PRO</span></h1>
+      </div>
+      <div class="menu-buttons">
+        <button class="btn-primary" id="btn-play">PLAY GAME</button>
+        <button class="btn-secondary" id="btn-practice">FREE PRACTICE</button>
+        <button class="btn-secondary" id="btn-controls">CONTROLS</button>
+      </div>
+      <div class="menu-footer">
+        <p>Built with Three.js | Custom Physics Engine</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Controls Screen -->
+  <div id="controls-screen" class="hidden">
+    <div class="controls-panel">
+      <h2>GAME CONTROLS</h2>
+      <div class="controls-grid">
+        <div class="control-item"><span class="key">W A S D</span><span>Move Player</span></div>
+        <div class="control-item"><span class="key">MOUSE</span><span>Aim Direction</span></div>
+        <div class="control-item"><span class="key">HOLD LMB</span><span>Charge Shot</span></div>
+        <div class="control-item"><span class="key">RELEASE</span><span>Shoot Ball</span></div>
+        <div class="control-item"><span class="key">SPACE</span><span>Quick Shot</span></div>
+        <div class="control-item"><span class="key">R</span><span>Reset Ball</span></div>
+        <div class="control-item"><span class="key">C</span><span>Camera View</span></div>
+        <div class="control-item"><span class="key">ESC</span><span>Pause / Menu</span></div>
+      </div>
+      <button class="btn-primary" id="btn-back">BACK</button>
+    </div>
+  </div>
+
+  <!-- Game HUD -->
+  <div id="game-hud" class="hidden">
+    <!-- Score Panel -->
+    <div class="hud-top">
+      <div class="score-panel">
+        <div class="team-score" id="score-home">
+          <span class="team-name">HOME</span>
+          <span class="score-value" id="home-score">0</span>
+        </div>
+        <div class="game-clock">
+          <div class="period-display" id="period-display">Q1</div>
+          <div class="time-display" id="time-display">02:00</div>
+          <div class="shot-clock" id="shot-clock">24</div>
+        </div>
+        <div class="team-score" id="score-away">
+          <span class="team-name">AWAY</span>
+          <span class="score-value" id="away-score">0</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Shot Power Meter -->
+    <div class="hud-bottom-left">
+      <div class="power-meter-container" id="power-container">
+        <div class="power-label">SHOT POWER</div>
+        <div class="power-bar-bg">
+          <div class="power-bar" id="power-bar"></div>
+          <div class="power-sweet-spot"></div>
+        </div>
+        <div class="power-value" id="power-value">0%</div>
+      </div>
+    </div>
+
+    <!-- Aim Indicator -->
+    <div class="crosshair" id="crosshair">
+      <div class="crosshair-ring"></div>
+      <div class="crosshair-dot"></div>
+    </div>
+
+    <!-- Mini Stats -->
+    <div class="hud-bottom-right">
+      <div class="mini-stats">
+        <div class="stat-item">
+          <span class="stat-label">SHOTS</span>
+          <span class="stat-value" id="stat-shots">0</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">MADE</span>
+          <span class="stat-value" id="stat-made">0</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">%</span>
+          <span class="stat-value" id="stat-pct">0%</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Notifications -->
+    <div id="notification-container"></div>
+
+    <!-- Pause Button -->
+    <button class="pause-btn" id="btn-pause">⏸</button>
+  </div>
+
+  <!-- Pause Menu -->
+  <div id="pause-menu" class="hidden">
+    <div class="pause-overlay"></div>
+    <div class="pause-content">
+      <h2>PAUSED</h2>
+      <button class="btn-primary" id="btn-resume">RESUME</button>
+      <button class="btn-secondary" id="btn-restart">RESTART</button>
+      <button class="btn-secondary" id="btn-main-menu">MAIN MENU</button>
+    </div>
+  </div>
+
+  <!-- Game Over Screen -->
+  <div id="game-over" class="hidden">
+    <div class="gameover-overlay"></div>
+    <div class="gameover-content">
+      <h1 id="gameover-title">GAME OVER</h1>
+      <div class="final-scores">
+        <div class="final-score-item">
+          <span>HOME</span>
+          <span id="final-home">0</span>
+        </div>
+        <div class="score-divider">—</div>
+        <div class="final-score-item">
+          <span>AWAY</span>
+          <span id="final-away">0</span>
+        </div>
+      </div>
+      <div class="final-stats" id="final-stats"></div>
+      <button class="btn-primary" id="btn-play-again">PLAY AGAIN</button>
+      <button class="btn-secondary" id="btn-menu-final">MAIN MENU</button>
+    </div>
+  </div>
+
+  <!-- Canvas Container -->
+  <div id="canvas-container"></div>
+
+  <!-- Three.js and Game Scripts -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="js/core/Logger.js"></script>
+  <script src="js/utils/MathUtils.js"></script>
+  <script src="js/physics/PhysicsEngine.js"></script>
+  <script src="js/physics/BallPhysics.js"></script>
+  <script src="js/physics/CollisionSystem.js"></script>
+  <script src="js/core/Renderer.js"></script>
+  <script src="js/core/Camera.js"></script>
+  <script src="js/core/InputManager.js"></script>
+  <script src="js/core/AudioManager.js"></script>
+  <script src="js/entities/Court.js"></script>
+  <script src="js/entities/Hoop.js"></script>
+  <script src="js/entities/Ball.js"></script>
+  <script src="js/entities/Player.js"></script>
+  <script src="js/entities/Particles.js"></script>
+  <script src="js/ui/HUD.js"></script>
+  <script src="js/ui/Notifications.js"></script>
+  <script src="js/core/GameState.js"></script>
+  <script src="js/core/Game.js"></script>
+</body>
+</html>
