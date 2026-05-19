@@ -32,8 +32,16 @@ class AudioManager {
       this._masterGain.gain.value = this._volume;
       this._masterGain.connect(this._context.destination);
     } catch (e) {
-      console.warn('AudioManager: Web Audio API not available');
+      console.warn('AudioManager: Web Audio API not available or suspended');
       this._enabled = false;
+    }
+  }
+
+  _ensureContext() {
+    if (this._context && this._context.state === 'suspended') {
+      try {
+        this._context.resume();
+      } catch (e) {}
     }
   }
 

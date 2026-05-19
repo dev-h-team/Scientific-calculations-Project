@@ -127,6 +127,7 @@ class Game {
 
       this._updateLoading(100, 'Ready!');
       window.gameLogger.info('Initialization complete, showing menu');
+      this._startGameLoop(); // Start the physics and rendering in the background
       setTimeout(() => this._showMenu(), 800);
     } catch (err) {
       window.gameLogger.error('CRITICAL INITIALIZATION ERROR:', err);
@@ -502,10 +503,16 @@ class Game {
     this._frameId = requestAnimationFrame((t) => this._loop(t));
     
     try {
-      // Cap dt to 50ms to prevent spiral-of-death on tab resume
-      const dt   = Math.min((timestamp - this._lastTime) / 1000, 0.05);
-      this._lastTime = timestamp;
-      const time = timestamp / 1000;
+      // Use performance.now() to avoid timestamp mismatches between rAF and performance.now
+      const now = performance.now();
+      let dt = (now - this._lastTime) / 1000;
+      
+      // Prevent negative dt and cap dt to 50ms to prevent spiral-of-death on tab resume
+      if (dt < 0) dt = 0;
+      if (dt > 0.05) dt = 0.05;
+      
+      this._lastTime = now;
+      const time = now / 1000;
 
       this._update(dt, time);
       this._render(time);
@@ -537,16 +544,21 @@ class Game {
     this.hud.updateClock(this.state.gameTime, this.state.period);
     this.hud.updateShotClock(this.state.shotClock);
 
-    // ── 3. Camera mouse look ──────────────────────────────────────────────
+    // ── 3. Camera mouse look & arrow keys ────────────────────────────────────────────────
     if (this.input.mouse.deltaX !== 0 || this.input.mouse.deltaY !== 0) {
       this.camera.setMouseDelta(this.input.mouse.deltaX, this.input.mouse.deltaY);
+    }
+    const camArrows = this.input.getCameraMoveVector();
+    if (camArrows.x !== 0 || camArrows.y !== 0) {
+      // Arrow keys act like mouse delta, scaling with dt to run independently of framerate
+      this.camera.setMouseDelta(camArrows.x * 1200 * dt, -camArrows.y * 1200 * dt);
     }
 
     // ── 4. Camera update (Early update to get correct rotation for movement) ──
     const playerPosForCam = this.player ? this.player.getPosition() : null;
     const ballPosForCam   = this.ball ? this.ball.getPosition() : null;
     if (this.camera) {
-      this.camera.update(dt, playerPosForCam, ballPosForCam, this.ball ? this.ball.inFlight : false);
+      // NOTE: We update it later now to prevent jitter.
     }
 
     // ── 5. Player movement (camera-relative) ─────────────────────────────
@@ -660,7 +672,12 @@ class Game {
     this.court.update(time);
     this.particles.update(dt);
 
-    // ── 10. Camera update (Already updated above) ─────────────────────────
+    // ── 10. Camera update ─────────────────────────────────────────────────────
+    if (this.camera) {
+      const pPosCam = this.player ? this.player.getPosition() : null;
+      const bPosCam = this.ball ? this.ball.getPosition() : null;
+      this.camera.update(dt, pPosCam, bPosCam, this.ball ? this.ball.inFlight : false);
+    }
 
     // ── 11. AI opponent ───────────────────────────────────────────────────
     if (!this.state.isPractice) this._updateAI(dt);

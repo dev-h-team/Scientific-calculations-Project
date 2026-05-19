@@ -31,12 +31,13 @@ class CollisionSystem {
 
     // ── Court bounds (half-court, world units) ────────────────────────────
     // NBA half-court: 14.33 m × 15.24 m  → × SCALE(3) ≈ 43 × 45.7 wu
-    // We keep it a bit tighter for gameplay feel
+    // We expanded it per user request
     this.courtBounds = {
-      minX: -13.0,
-      maxX:  13.0,
-      minZ: -14.5,
-      maxZ:  14.5,
+      minX: -15.0,
+      maxX:  15.0,
+      minZ: -28.0,
+      maxZ:  28.0,
+      maxY:  25.0,
       floorY: 0
     };
 
@@ -144,6 +145,12 @@ class CollisionSystem {
       body.position.z = b.maxZ - radius;
       if (body.velocity.z > 0) body.velocity.z = -Math.abs(body.velocity.z) * r;
       this._emit('outOfBounds', { side: 'front' });
+    }
+    // Ceiling collision
+    if (body.position.y + radius > b.maxY) {
+      body.position.y = b.maxY - radius;
+      if (body.velocity.y > 0) body.velocity.y = -Math.abs(body.velocity.y) * r;
+      this._emit('outOfBounds', { side: 'ceiling' });
     }
   }
 

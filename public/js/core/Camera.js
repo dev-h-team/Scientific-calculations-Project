@@ -20,7 +20,7 @@ class CameraController {
     this.renderer = renderer;
 
     this.MODES = { FIRST_PERSON: 0, FOLLOW: 1, BROADCAST: 2, FREE: 3, BALL: 4 };
-    this.currentMode = this.MODES.FIRST_PERSON;
+    this.currentMode = this.MODES.FOLLOW;
 
     // ── Three.js camera ───────────────────────────────────────────────────
     this.camera = new THREE.PerspectiveCamera(
@@ -45,8 +45,8 @@ class CameraController {
     this._targetPitch = 0.45;
 
     // Distance from player in FOLLOW mode
-    this._followDist   = 9.0;
-    this._followHeight = 4.5;
+    this._followDist   = 4.0;
+    this._followHeight = 1.3;
 
     // ── Shake ─────────────────────────────────────────────────────────────
     this._shakeIntensity = 0;
@@ -116,12 +116,17 @@ class CameraController {
     this.camera.position.add(this._shakeOffset);
 
     // ── Constrain camera within court boundaries ─────────────────────────
-    // Court is roughly X:[-7.5, 7.5], Z:[-14, 14], Y:[0, 12]
-    // We add a small margin to prevent clipping through walls
+    // Court is roughly X:[-15, 15], Z:[-28, 28], Y:[0, 20] (updated for larger court)
     const margin = 0.5;
-    this.camera.position.x = MathUtils.clamp(this.camera.position.x, -7.5 + margin, 7.5 - margin);
-    this.camera.position.z = MathUtils.clamp(this.camera.position.z, -14.0 + margin, 14.0 - margin);
-    this.camera.position.y = MathUtils.clamp(this.camera.position.y, 0.5, 12.0);
+    
+    // Instead of freezing camera position, push it closer to the player if obstructed
+    const rawX = this.camera.position.x;
+    const rawY = this.camera.position.y;
+    const rawZ = this.camera.position.z;
+
+    this.camera.position.x = MathUtils.clamp(rawX, -15 + margin, 15 - margin);
+    this.camera.position.z = MathUtils.clamp(rawZ, -28 + margin, 28 - margin);
+    this.camera.position.y = MathUtils.clamp(rawY, 0.5, 20.0);
   }
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -138,15 +143,17 @@ class CameraController {
     }
     
     try {
-      // First person: camera is at player's head height
-      const headPos = new THREE.Vector3(playerPos.x, playerPos.y + 1.75, playerPos.z);
-      
-      // Calculate look direction from yaw and pitch
-      const lookDir = new THREE.Vector3(
-        -Math.sin(this._yaw) * Math.cos(this._pitch),
-        Math.sin(this._pitch),
-        -Math.cos(this._yaw) * Math.cos(this._pitch)
-      );
+// First person: camera is at player's head height, slightly forward to avoid seeing inside the model
+    const headPos = new THREE.Vector3(playerPos.x, playerPos.y + 1.75, playerPos.z);
+    
+    // Calculate look direction from yaw and pitch
+    const lookDir = new THREE.Vector3(
+      -Math.sin(this._yaw) * Math.cos(this._pitch),
+      Math.sin(this._pitch),
+      -Math.cos(this._yaw) * Math.cos(this._pitch)
+    );
+    
+    headPos.add(lookDir.clone().multiplyScalar(0.4)); // Push forward to be clearer
       
       const lookTarget = headPos.clone().add(lookDir);
       
@@ -177,8 +184,10 @@ class CameraController {
     const sinPitch = Math.sin(this._pitch);
 
     const dist = this._followDist;
+    // We want the camera to be BEHIND the player, so it projects looking FORWARD.
+    // lookDir is (-sinYaw, sinPitch, -cosYaw). Behind is (+sinYaw, +sinPitch, +cosYaw)
     const offsetX = sinYaw * cosPitch * dist;
-    const offsetY = sinPitch * dist + this._followHeight;
+    const offsetY = Math.max(sinPitch * dist, 0) + this._followHeight;
     const offsetZ = cosYaw * cosPitch * dist;
 
     const desiredPos = new THREE.Vector3(
@@ -187,14 +196,18 @@ class CameraController {
       playerPos.z + offsetZ
     );
 
-    // Look target: ball during flight, player head otherwise
+    // Look target: ball during flight, player head otherwise, but projected a bit forward
     const lookTarget = (ballInFlight && ballPos)
       ? new THREE.Vector3(ballPos.x, ballPos.y, ballPos.z)
-      : new THREE.Vector3(playerPos.x, playerPos.y + 1.8, playerPos.z);
+      : new THREE.Vector3(
+          playerPos.x - sinYaw * 5,
+          playerPos.y + 1.2 + Math.sin(this._pitch)*5,
+          playerPos.z - cosYaw * 5
+        );
 
-    // Smooth interpolation
-    this.camera.position.lerp(desiredPos, Math.min(dt * this.lerpSpeed, 1));
-    this.target.lerp(lookTarget, Math.min(dt * this.lerpSpeed * 1.4, 1));
+    // Smooth interpolation (faster to prevent jittering when character moves)
+    this.camera.position.lerp(desiredPos, Math.min(dt * this.lerpSpeed * 3.5, 1));
+    this.target.lerp(lookTarget, Math.min(dt * this.lerpSpeed * 3.5, 1));
     this.camera.lookAt(this.target);
 
     // ── Expose yaw as camera.rotation.y for player movement ──────────────

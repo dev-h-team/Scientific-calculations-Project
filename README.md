@@ -20,7 +20,7 @@
 
 ## Overview
 
-**Basketball 3D Pro** is a fully-featured 3D basketball game that runs in the browser via a Node.js server. The game features an NBA-accurate court, realistic ball physics, professional-quality visuals, and an immersive arena atmosphere.
+**Basketball 3D Pro** is a browser-based 3D basketball game that runs through a Node.js/Express server. It combines a custom physics engine, a professional arena presentation, camera modes, score tracking, shot clock logic, and a playable practice/match loop.
 
 The project was built as a demonstration of advanced Three.js capabilities combined with a completely custom physics engine, implementing all physics calculations manually without any external physics libraries.
 
@@ -29,11 +29,11 @@ The project was built as a demonstration of advanced Three.js capabilities combi
 ## Features
 
 ### 🎮 Gameplay
-- **Full basketball game** with 4 quarters (2 minutes each), shot clock, and scoring system
+- **Full basketball game** with quarters, game clock, shot clock, and scoring system
 - **Free Practice mode** for unlimited shooting practice
-- **AI opponent** that scores periodically to create competitive pressure
+- **AI opponent** in match mode for pressure and scoring cadence
 - **2-point and 3-point shots** based on distance from the hoop
-- **Shot power meter** with sweet-spot zone for optimal shots
+- **Shot power meter** with a sweet-spot zone for optimal shots
 - **Trajectory preview** showing predicted ball path before shooting
 - **Shot clock** (24 seconds) with urgent warning animation
 
@@ -57,13 +57,13 @@ The project was built as a demonstration of advanced Three.js capabilities combi
 
 ### 🎯 Physics (100% Custom)
 - **Gravity system** with configurable scale
-- **Projectile motion** using exact ballistic equations from the physics report
-- **Air resistance** (drag force with NBA ball cross-section)
-- **Magnus effect** (backspin/topspin affecting trajectory)
-- **Sphere-Plane collision** with restitution and friction
-- **Sphere-Box collision** for backboard interactions
-- **Sphere-Sphere collision** for rim interactions
-- **Energy loss on bounce** (NBA regulation: 72-76% bounce height)
+- **Projectile motion** using ballistic equations from the physics report
+- **Air resistance** with a quadratic drag model based on the basketball cross-section
+- **Magnus effect** from backspin/topspin influencing the trajectory
+- **Sphere-plane collision** with restitution and friction
+- **Sphere-box collision** for backboard interactions
+- **Sphere-sphere collision** for rim interactions
+- **Energy loss on bounce** tuned through custom restitution values
 - **Rolling resistance** and rest detection
 - **Spin-floor coupling** on bounce
 
@@ -79,7 +79,7 @@ The project was built as a demonstration of advanced Three.js capabilities combi
 - **Animated notifications** for scores, 3-pointers, period changes
 - **Pause menu** with resume, restart, and main menu options
 - **Game over screen** with final stats
-- **Camera modes**: Follow, Broadcast, Free, Ball-tracking
+- **Camera modes**: First-person, Follow, Broadcast, Free, Ball
 - **Shot cinematic** camera for dramatic shots
 
 ---
@@ -124,7 +124,7 @@ F_drag = 0.5 × ρ × Cd × A × v²
 Where `ρ = 1.225 kg/m³`, `Cd = 0.47` (sphere), `A = π × r²`
 
 ### Integration Method
-Uses **Verlet-style integration** with fixed timestep (1/120s) and accumulator for stability, with up to 4 substeps per frame.
+Uses a **fixed timestep accumulator** (1/120s) with **semi-implicit Euler integration** for stability, with up to 6 substeps per frame.
 
 ---
 
@@ -177,7 +177,7 @@ npm run dev
 | `Shift` | Sprint |
 | `Hold Left Mouse Button` | Charge Shot Power |
 | `Release Left Mouse Button` | Shoot Ball |
-| `Mouse Move` | Aim Direction (camera look) |
+| `Mouse Move` | Aim Direction (camera look when pointer is locked) |
 | `R` | Reset Ball to Player |
 | `C` | Cycle Camera Mode |
 | `M` | Toggle Mute |
@@ -188,6 +188,7 @@ npm run dev
 - Hold longer for more power (needed for 3-pointers from distance)
 - The **trajectory preview** dots show where the ball will go
 - **Backspin** is automatically applied to improve accuracy
+- The game requests **pointer lock** when you start Play or Practice, so mouse movement rotates the camera smoothly
 
 ---
 
@@ -231,11 +232,11 @@ basketball3d/
 
 | Module | Responsibility |
 |--------|---------------|
-| `PhysicsEngine` | Core physics: gravity, Verlet integration, sphere-plane/box/sphere collision |
+| `PhysicsEngine` | Core physics: gravity, fixed timestep integration, sphere-plane/box/sphere collision |
 | `BallPhysics` | Shot velocity calculation, backspin, floor bounce, trajectory preview |
 | `CollisionSystem` | Per-frame collision checks, scoring detection, event emission |
 | `Renderer` | WebGL2 renderer, ACES tone mapping, arena lighting, shadow maps |
-| `CameraController` | Follow/Broadcast/Free/Ball camera modes, shake, cinematics |
+| `CameraController` | First-person/Follow/Broadcast/Free/Ball camera modes, shake, cinematics |
 | `InputManager` | Keyboard/mouse/touch state, shot charge timing |
 | `AudioManager` | Web Audio API procedural synthesis |
 | `GameState` | State machine, period timer, shot clock, stats tracking |
@@ -259,7 +260,7 @@ basketball3d/
 
 ### Physics Pipeline (per frame)
 1. Accumulate delta time
-2. Run fixed-timestep substeps (up to 4 × 1/120s)
+2. Run fixed-timestep substeps (up to 6 × 1/120s)
 3. For each substep: apply gravity, air drag, Magnus force, integrate position
 4. Floor collision check
 5. Boundary check
@@ -294,10 +295,10 @@ This project implements the physics principles described in the academic report:
 | Concept | Implementation |
 |---------|---------------|
 | Projectile motion equations | `PhysicsEngine.calcShotVelocity()` |
-| Optimal launch angle (45°–55°) | `BallPhysics.applyShot()` |
+| Distance-based launch angle (about 46°–54°) | `BallPhysics.applyShot()` |
 | Free throw angle (51°) | `BallPhysics.applyFreeThrow()` |
-| Initial velocity (~8.1 m/s) | Calculated from distance and angle |
-| Coefficient of restitution (0.85) | `RESTITUTION_FLOOR = 0.72` |
+| Power-scaled launch velocity | `BallPhysics.applyShot()` |
+| Floor bounce coefficient | `RESTITUTION_FLOOR = 0.72` |
 | Backspin effect | `PhysicsEngine._calcMagnusForce()` |
 | Air resistance | `PhysicsEngine._integrateBody()` |
 | Newton's laws | All force/impulse calculations |

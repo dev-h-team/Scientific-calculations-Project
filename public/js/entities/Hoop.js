@@ -58,7 +58,8 @@ class Hoop {
 
   _buildPole() {
     // Main support pole
-    const poleGeo = new THREE.CylinderGeometry(0.06, 0.08, 4.5, 12);
+    const poleHeight = this.hoopHeight + 0.3; // extend slightly above backboard mount
+    const poleGeo = new THREE.CylinderGeometry(0.06, 0.08, poleHeight, 12);
     const poleMat = new THREE.MeshStandardMaterial({
       color: 0x888899,
       roughness: 0.3,
@@ -66,10 +67,9 @@ class Hoop {
     });
     
     this.pole = new THREE.Mesh(poleGeo, poleMat);
-    this.pole.position.set(0, 2.25, 0);
+    this.pole.position.set(0, poleHeight / 2, 0);
     this.pole.castShadow = true;
     this.group.add(this.pole);
-    
     // Pole base
     const baseGeo = new THREE.CylinderGeometry(0.25, 0.3, 0.15, 16);
     const base = new THREE.Mesh(baseGeo, poleMat);

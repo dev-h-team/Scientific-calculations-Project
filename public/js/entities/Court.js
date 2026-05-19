@@ -17,9 +17,9 @@ class Court {
     this.group = new THREE.Group();
     scene.add(this.group);
     
-    // Court dimensions (NBA regulation, scaled)
-    this.length = 28.0;  // Z axis
-    this.width = 15.0;   // X axis
+    // Court dimensions (NBA regulation, scaled - ENLARGED)
+    this.length = 56.0;  // Z axis (Doubled)
+    this.width = 30.0;   // X axis (Doubled)
     
     this._build();
   }
@@ -396,7 +396,7 @@ class Court {
     
     const ceilGeo = new THREE.BoxGeometry(this.width + 8, 0.5, this.length + 8);
     const ceiling = new THREE.Mesh(ceilGeo, ceilMat);
-    ceiling.position.y = 12;
+    ceiling.position.y = 18;
     this.group.add(ceiling);
     
     // Ceiling grid structure
@@ -410,77 +410,94 @@ class Court {
     for (let i = -2; i <= 2; i++) {
       const beamGeo = new THREE.BoxGeometry(0.2, 0.3, this.length + 8);
       const beam = new THREE.Mesh(beamGeo, gridMat);
-      beam.position.set(i * 3, 11.7, 0);
+      beam.position.set(i * 3, 17.7, 0);
       this.group.add(beam);
     }
   }
 
   _buildStands() {
-    // Bleacher stands around the court
-    const standMat = new THREE.MeshStandardMaterial({
-      color: 0x1A1A30,
-      roughness: 0.9
-    });
-    
     const halfW = this.width / 2;
     const halfL = this.length / 2;
     
+    const rowDepth = 2.0;    // How deep each seating step is
+    const rowHeight = 1.0;   // How tall each seating step is
+    const numRows = 6;       // Number of rows
+
+    const stepMat = new THREE.MeshStandardMaterial({ 
+      color: 0x222235, 
+      roughness: 0.8 
+    });
+    
     // Side stands
-    const sideStandGeo = new THREE.BoxGeometry(3.5, 4, this.length + 4);
-    [-halfW - 2, halfW + 2].forEach(x => {
-      const stand = new THREE.Mesh(sideStandGeo, standMat);
-      stand.position.set(x, 2, 0);
-      stand.receiveShadow = true;
-      this.group.add(stand);
+    for (let row = 0; row < numRows; row++) {
+      const stepH = (row + 1) * rowHeight;
+      const stepY = stepH / 2;
+      const stepGeo = new THREE.BoxGeometry(rowDepth, stepH, this.length + 8);
       
-      // Crowd silhouettes
-      this._addCrowdRow(x, 3.5, 0, this.length + 4, x > 0 ? -1 : 1);
-    });
-    
-    // End stands
-    const endStandGeo = new THREE.BoxGeometry(this.width + 8, 3, 3);
-    [-halfL - 1.5, halfL + 1.5].forEach(z => {
-      const stand = new THREE.Mesh(endStandGeo, standMat);
-      stand.position.set(0, 1.5, z);
-      stand.receiveShadow = true;
-      this.group.add(stand);
-    });
-    
-    // Stand steps
-    const stepMat = new THREE.MeshStandardMaterial({ color: 0x222235 });
-    for (let row = 0; row < 4; row++) {
-      const stepGeo = new THREE.BoxGeometry(3.5, 0.1, this.length + 4);
-      [-halfW - 0.5 - row * 0.7, halfW + 0.5 + row * 0.7].forEach(x => {
+      const xDistance = halfW + 1.5 + row * rowDepth;
+      
+      // Left and right side
+      [-xDistance, xDistance].forEach(x => {
         const step = new THREE.Mesh(stepGeo, stepMat);
-        step.position.set(x, 0.5 + row * 0.9, 0);
+        step.position.set(x, stepY, 0);
+        step.receiveShadow = true;
         this.group.add(step);
+        // Add crowd on this side step
+        this._addCrowdRow(x, stepH, 0, this.length + 6, x > 0 ? -1 : 1, true);
+      });
+    }
+
+    // End stands
+    for (let row = 0; row < numRows - 1; row++) {
+      const stepH = (row + 1) * rowHeight;
+      const stepY = stepH / 2;
+      const stepGeo = new THREE.BoxGeometry(this.width + 2.0, stepH, rowDepth);
+      
+      const zDistance = halfL + 2.0 + row * rowDepth;
+      
+      // Near and far ends
+      [-zDistance, zDistance].forEach(z => {
+        const step = new THREE.Mesh(stepGeo, stepMat);
+        step.position.set(0, stepY, z);
+        step.receiveShadow = true;
+        this.group.add(step);
+        // Add crowd on this end step
+        this._addCrowdRow(0, stepH, z, this.width, z > 0 ? -1 : 1, false);
       });
     }
   }
 
-  _addCrowdRow(x, y, z, length, facingDir) {
-    // Simple crowd silhouettes
-    const crowdMat = new THREE.MeshBasicMaterial({
-      color: 0x334466,
-      transparent: true,
-      opacity: 0.7
-    });
-    
-    const count = Math.floor(length / 0.7);
+  _addCrowdRow(x, y, z, length, facingDir, isSide) {
+    const crowdMatColors = [0x445577, 0x773344, 0x336644, 0x666666, 0x887722, 0x225588];
+    const spacing = 1.2;
+    const count = Math.floor(length / spacing);
+    const startOffset = -length / 2 + spacing / 2;
+
     for (let i = 0; i < count; i++) {
-      const crowdZ = z - length / 2 + i * 0.7 + 0.35;
+        // Skip some seats for realism
+        if (Math.random() > 0.8) continue;
+        
+        const cMat = new THREE.MeshLambertMaterial({
+            color: crowdMatColors[Math.floor(Math.random() * crowdMatColors.length)],
+        });
+
+        const offset = startOffset + i * spacing;
+        const posX = isSide ? x : x + offset;
+        const posZ = isSide ? z + offset : z;
       
-      // Body
-      const bodyGeo = new THREE.BoxGeometry(0.4, 0.6, 0.2);
-      const body = new THREE.Mesh(bodyGeo, crowdMat);
-      body.position.set(x + facingDir * 0.1, y, crowdZ);
-      this.group.add(body);
+        // Body (Seated person)
+        const bodyGeo = new THREE.BoxGeometry(0.7, 0.9, 0.7);
+        const body = new THREE.Mesh(bodyGeo, cMat);
+        body.position.set(posX, y + 0.45, posZ);
+        if(!isSide) { body.scale.set(1.2, 1, 0.8); } else { body.scale.set(0.8, 1, 1.2); }
+        this.group.add(body);
       
-      // Head
-      const headGeo = new THREE.SphereGeometry(0.15, 6, 6);
-      const head = new THREE.Mesh(headGeo, crowdMat);
-      head.position.set(x + facingDir * 0.1, y + 0.45, crowdZ);
-      this.group.add(head);
+        // Head
+        const headGeo = new THREE.SphereGeometry(0.22, 8, 8);
+        const headMat = new THREE.MeshLambertMaterial({ color: 0xffccaa });
+        const head = new THREE.Mesh(headGeo, headMat);
+        head.position.set(posX, y + 0.45 + 0.55, posZ);
+        this.group.add(head);
     }
   }
 

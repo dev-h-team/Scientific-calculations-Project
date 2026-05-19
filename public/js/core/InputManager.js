@@ -100,14 +100,14 @@ class InputManager {
     // ── Mouse movement ────────────────────────────────────────────────────
     window.addEventListener('mousemove', (e) => {
       if (document.pointerLockElement) {
-        this.mouse.deltaX = e.movementX;
-        this.mouse.deltaY = e.movementY;
+        this.mouse.deltaX += e.movementX;
+        this.mouse.deltaY += e.movementY;
         this.mouse.locked = true;
       } else {
         this.mouse.x      = (e.clientX / window.innerWidth)  *  2 - 1;
         this.mouse.y      = (e.clientY / window.innerHeight)  * -2 + 1;
-        this.mouse.deltaX = e.movementX || 0;
-        this.mouse.deltaY = e.movementY || 0;
+        this.mouse.deltaX += e.movementX || 0;
+        this.mouse.deltaY += e.movementY || 0;
         this.mouse.locked = false;
       }
 
@@ -193,7 +193,7 @@ class InputManager {
     this.dragAngle       = 0;
     this.dragStartX      = x;
     this.dragStartY      = y;
-    this.isDragging      = (source !== 'Space');
+    this.isDragging      = (source !== 'Space' && !this.mouse.locked);
 
     this._emit('shotChargeStart');
   }
@@ -228,8 +228,8 @@ class InputManager {
   _releaseShotCharge() {
     if (!this.shotCharging) return;
 
-    // For Space: compute power from hold duration
-    if (this.shotSource === 'Space') {
+    // For Space or Locked Mouse: compute power from hold duration (not drag)
+    if (!this.isDragging) {
       const elapsed = (performance.now() - this.shotChargeStart) / 1000;
       // Linear ramp: 0 → 1 over MAX_CHARGE_TIME
       // Minimum of 0.15 so a quick tap still fires a weak shot
@@ -256,15 +256,11 @@ class InputManager {
   // ═══════════════════════════════════════════════════════════════════════
 
   update(dt) {
-    // ── Space bar: update power in real-time so HUD meter responds ────────
-    if (this.shotCharging && this.shotSource === 'Space') {
+    // ── Space bar OR locked mouse: update power in real-time so HUD meter responds ────────
+    if (this.shotCharging && (!this.isDragging)) {
       const elapsed = (performance.now() - this.shotChargeStart) / 1000;
       this.shotPower = MathUtils.clamp(elapsed / this.MAX_CHARGE_TIME, 0, 1.0);
     }
-
-    // ── Reset per-frame mouse deltas ──────────────────────────────────────
-    this.mouse.deltaX = 0;
-    this.mouse.deltaY = 0;
   }
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -276,6 +272,8 @@ class InputManager {
     this.keysJustReleased = {};
     this.mouse.buttonsJustPressed  = [false, false, false];
     this.mouse.buttonsJustReleased = [false, false, false];
+    this.mouse.deltaX = 0;
+    this.mouse.deltaY = 0;
   }
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -295,10 +293,10 @@ class InputManager {
   getMoveVector() {
     let x = 0, z = 0;
 
-    if (this.isKeyDown('KeyW') || this.isKeyDown('ArrowUp'))    z -= 1;
-    if (this.isKeyDown('KeyS') || this.isKeyDown('ArrowDown'))  z += 1;
-    if (this.isKeyDown('KeyA') || this.isKeyDown('ArrowLeft'))  x -= 1;
-    if (this.isKeyDown('KeyD') || this.isKeyDown('ArrowRight')) x += 1;
+    if (this.isKeyDown('KeyW')) z -= 1;
+    if (this.isKeyDown('KeyS')) z += 1;
+    if (this.isKeyDown('KeyA')) x -= 1;
+    if (this.isKeyDown('KeyD')) x += 1;
 
     // Normalise diagonal
     if (x !== 0 && z !== 0) {
@@ -307,6 +305,20 @@ class InputManager {
     }
 
     return { x, z };
+  }
+
+  /**
+   * Returns a vector from the arrow keys for camera movement.
+   */
+  getCameraMoveVector() {
+    let x = 0, y = 0;
+
+    if (this.isKeyDown('ArrowUp'))    y += 1;
+    if (this.isKeyDown('ArrowDown'))  y -= 1;
+    if (this.isKeyDown('ArrowLeft'))  x -= 1;
+    if (this.isKeyDown('ArrowRight')) x += 1;
+
+    return { x, y };
   }
 
   isSprinting() {

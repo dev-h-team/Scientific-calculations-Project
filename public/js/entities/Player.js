@@ -44,8 +44,8 @@ class Player {
     this._jumpTime     = 0;
     this._jumpDuration = 0.75;
 
-    // ── Court boundaries (half-court dimensions) ─────────────────────────
-    this.bounds = { minX: -6.5, maxX: 6.5, minZ: -12.5, maxZ: 12.5 };
+    // ── Court boundaries (expanded dimensions) ─────────────────────────
+    this.bounds = { minX: -14.0, maxX: 14.0, minZ: -27.0, maxZ: 27.0 };
 
     this._build();
   }
