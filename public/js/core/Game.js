@@ -58,6 +58,10 @@ class Game {
     // ── AI ────────────────────────────────────────────────────────────────
     this._aiTimer        = 0;
     this._aiShotInterval = 8;
+    
+    // ── Shooter Aim Mode ──────────────────────────────────────────────────
+    this._wasAiming      = false;
+    this._preAimMode     = null;
 
     this._init();
   }
@@ -552,6 +556,27 @@ class Game {
     if (camArrows.x !== 0 || camArrows.y !== 0) {
       // Arrow keys act like mouse delta, scaling with dt to run independently of framerate
       this.camera.setMouseDelta(camArrows.x * 1200 * dt, -camArrows.y * 1200 * dt);
+    }
+    
+    // ── 3.5. Shooter Mode (Hold RMB) & Zoom ───────────────────────────────
+    const isRmbDown = this.input.isMouseButtonDown(2);
+    if (isRmbDown && !this._wasAiming) {
+      this._wasAiming = true;
+      this._preAimMode = this.camera.currentMode;
+      // Switch to First Person (Shooter Mode) if not already in it
+      if (this.camera.currentMode !== this.camera.MODES.FIRST_PERSON) {
+         this.camera.setMode(this.camera.MODES.FIRST_PERSON);
+      }
+    } else if (!isRmbDown && this._wasAiming) {
+      this._wasAiming = false;
+      // Revert to previous camera mode
+      if (this._preAimMode !== null) {
+         this.camera.setMode(this._preAimMode);
+      }
+    }
+
+    if (this.input.mouse.scrollDelta !== 0) {
+      this.camera.addZoom(this.input.mouse.scrollDelta);
     }
 
     // ── 4. Camera update (Early update to get correct rotation for movement) ──

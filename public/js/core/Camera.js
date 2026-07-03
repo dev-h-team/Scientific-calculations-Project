@@ -162,9 +162,9 @@ class CameraController {
           throw new Error('Camera position or target contains NaN');
       }
 
-      // Faster interpolation for first person to feel responsive
-      this.camera.position.lerp(headPos, Math.min(dt * 25, 1));
-      this.target.lerp(lookTarget, Math.min(dt * 25, 1));
+      // Direct tracking for first person to feel fully responsive
+      this.camera.position.copy(headPos);
+      this.target.copy(lookTarget);
       this.camera.lookAt(this.target);
       
       // Expose yaw for movement
@@ -303,7 +303,14 @@ class CameraController {
 
   setMouseDelta(dx, dy) {
     this._targetYaw   += dx * 0.0028;
-    this._targetPitch  = MathUtils.clamp(this._targetPitch + dy * 0.0018, 0.05, 1.1);
+    this._targetPitch  = MathUtils.clamp(this._targetPitch + dy * 0.0018, -1.1, 1.1);
+  }
+
+  addZoom(deltaY) {
+    // Scroll down (positive) -> zoom out -> increase FOV
+    // Scroll up (negative) -> zoom in -> decrease FOV
+    const zoomAmount = deltaY > 0 ? 5 : -5;
+    this._targetFOV = MathUtils.clamp(this._targetFOV + zoomAmount, 20, 100);
   }
 
   // ═══════════════════════════════════════════════════════════════════════

@@ -36,7 +36,8 @@ class InputManager {
       buttons: [false, false, false],
       buttonsJustPressed:  [false, false, false],
       buttonsJustReleased: [false, false, false],
-      locked: false
+      locked: false,
+      scrollDelta: 0
     };
 
     // ── Touch state ───────────────────────────────────────────────────────
@@ -122,7 +123,8 @@ class InputManager {
       this.mouse.buttons[e.button]           = true;
       this.mouse.buttonsJustPressed[e.button] = true;
 
-      if (e.button === 0 || e.button === 2) {
+      // Only left click charges a shot, right click is used for aiming
+      if (e.button === 0) {
         this._startShotCharge('Mouse' + e.button, e.clientX, e.clientY);
       }
       this._emit('mousedown', e.button);
@@ -132,13 +134,18 @@ class InputManager {
       this.mouse.buttons[e.button]            = false;
       this.mouse.buttonsJustReleased[e.button] = true;
 
-      if ((e.button === 0 || e.button === 2) &&
+      if (e.button === 0 &&
           this.shotCharging &&
           this.shotSource === 'Mouse' + e.button) {
         this._releaseShotCharge();
       }
       this._emit('mouseup', e.button);
     });
+
+    // ── Mouse wheel (Zoom) ────────────────────────────────────────────────
+    window.addEventListener('wheel', (e) => {
+      this.mouse.scrollDelta += e.deltaY;
+    }, { passive: true });
 
     // ── Pointer lock ──────────────────────────────────────────────────────
     document.addEventListener('pointerlockchange', () => {
@@ -231,9 +238,11 @@ class InputManager {
     // For Space or Locked Mouse: compute power from hold duration (not drag)
     if (!this.isDragging) {
       const elapsed = (performance.now() - this.shotChargeStart) / 1000;
-      // Linear ramp: 0 → 1 over MAX_CHARGE_TIME
+      const progress = (elapsed % this.MAX_CHARGE_TIME) / this.MAX_CHARGE_TIME;
+      const cycle = Math.floor(elapsed / this.MAX_CHARGE_TIME);
+      const rawPower = cycle % 2 === 0 ? progress : 1.0 - progress;
       // Minimum of 0.15 so a quick tap still fires a weak shot
-      this.shotPower = MathUtils.clamp(elapsed / this.MAX_CHARGE_TIME, 0.15, 1.0);
+      this.shotPower = MathUtils.clamp(rawPower, 0.15, 1.0);
       this.dragAngle = 0;
     }
 
@@ -259,7 +268,10 @@ class InputManager {
     // ── Space bar OR locked mouse: update power in real-time so HUD meter responds ────────
     if (this.shotCharging && (!this.isDragging)) {
       const elapsed = (performance.now() - this.shotChargeStart) / 1000;
-      this.shotPower = MathUtils.clamp(elapsed / this.MAX_CHARGE_TIME, 0, 1.0);
+      const progress = (elapsed % this.MAX_CHARGE_TIME) / this.MAX_CHARGE_TIME;
+      const cycle = Math.floor(elapsed / this.MAX_CHARGE_TIME);
+      this.shotPower = cycle % 2 === 0 ? progress : 1.0 - progress;
+      this.shotPower = MathUtils.clamp(this.shotPower, 0, 1.0);
     }
   }
 
@@ -274,6 +286,7 @@ class InputManager {
     this.mouse.buttonsJustReleased = [false, false, false];
     this.mouse.deltaX = 0;
     this.mouse.deltaY = 0;
+    this.mouse.scrollDelta = 0;
   }
 
   // ═══════════════════════════════════════════════════════════════════════
