@@ -280,9 +280,8 @@ class Game {
     if (code === 'KeyR') this._resetBallToPlayer();
 
     if (code === 'KeyC') {
-      const mode  = this.camera.cycleMode();
-      const names = this.camera.getModeNames();
-      this.notifications.show(`Camera: ${names[mode]}`, '', 1000);
+      this.camera.cycleMode();
+      // The camera itself shows its own HUD indicator now via _showModeIndicator()
     }
 
     if (code === 'Escape' && this.state.isActive()) {
@@ -344,10 +343,7 @@ class Game {
     // ── Camera cinematic ──────────────────────────────────────────────────
     // Only play cinematic if NOT in first-person mode
     if (power > 0.35 && this.camera.currentMode !== this.camera.MODES.FIRST_PERSON) {
-      this.camera.playShotCinematic(
-        { x: shootPos.x, y: shootPos.y, z: shootPos.z },
-        { x: hoopPos.x,  y: hoopPos.y,  z: hoopPos.z  }
-      );
+      this.camera.playShotCinematic();
     }
 
     // ── Record for 3-pointer check ────────────────────────────────────────
@@ -587,11 +583,23 @@ class Game {
     }
 
     // ── 5. Player movement (camera-relative) ─────────────────────────────
-    const moveVec    = this.input.getMoveVector();
+    const moveVec     = this.input.getMoveVector();
     const isSprinting = this.input.isSprinting();
-    // Pass camera yaw so movement is always relative to camera facing
-    const cameraYaw  = this.camera.camera ? this.camera.camera.rotation.y : 0;
+    // Use getYaw() - the authoritative yaw from CameraController.
+    // This works for BOTH follow and first-person modes without corruption.
+    const cameraYaw   = this.camera.getYaw();
     this.player.move(moveVec, dt, isSprinting, cameraYaw);
+    
+    // In first-person mode: force player facing to match camera yaw instantly
+    // so the player always runs in the direction the camera faces.
+    if (this.camera.currentMode === this.camera.MODES.FIRST_PERSON) {
+      const hasInput = (Math.abs(moveVec.x) + Math.abs(moveVec.z)) > 0.01;
+      if (hasInput) {
+        // Player rotation follows camera yaw directly for authentic FPS feel
+        this.player.rotation = cameraYaw + Math.atan2(moveVec.x, moveVec.z);
+        this.player.targetRotation = this.player.rotation;
+      }
+    }
 
     // ── 6. Shot charging UI & trajectory preview ──────────────────────────
     if (this.input.shotCharging && !this.ball.inFlight && this._canShoot) {

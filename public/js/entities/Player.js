@@ -72,13 +72,16 @@ class Player {
     let worldDirZ = 0;
 
     if (hasInput) {
-      // Rotate input vector by camera yaw so "forward" = camera forward
-      const cosY = Math.cos(cameraYaw);
-      const sinY = Math.sin(cameraYaw);
-      worldDirX = inputVec.x * cosY + inputVec.z * sinY;
-      worldDirZ = -inputVec.x * sinY + inputVec.z * cosY;
+      // cameraYaw is the raw yaw from CameraController._yaw.
+      // When yaw=0 camera faces -Z (forward). We rotate the input vector
+      // by -yaw to convert screen-space input to world-space movement.
+      const cosY = Math.cos(-cameraYaw);
+      const sinY = Math.sin(-cameraYaw);
+      // Standard 2D rotation: rotate (inputVec.x, inputVec.z) by angle
+      worldDirX = inputVec.x * cosY - inputVec.z * sinY;
+      worldDirZ = inputVec.x * sinY + inputVec.z * cosY;
 
-      // Re-normalise (diagonal input already normalised, but rotation is safe)
+      // Re-normalise
       const len = Math.sqrt(worldDirX * worldDirX + worldDirZ * worldDirZ);
       if (len > 0.001) { worldDirX /= len; worldDirZ /= len; }
     }
