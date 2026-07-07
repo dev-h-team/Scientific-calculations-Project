@@ -157,8 +157,13 @@ class CameraController {
   //  PUBLIC API
   // ═══════════════════════════════════════════════════════════════════════
 
-  /** Returns the raw horizontal yaw angle (radians) for camera-relative player movement. */
   getYaw() {
+    if (this.currentMode === this.MODES.BROADCAST) {
+      // In Broadcast (side view at x=-17 looking at x=0), 
+      // the camera effectively faces the +X direction.
+      // -Math.PI / 2 maps W to +X, S to -X, A to -Z (left hoop), D to +Z (right hoop).
+      return -Math.PI / 2;
+    }
     return this._yaw;
   }
 

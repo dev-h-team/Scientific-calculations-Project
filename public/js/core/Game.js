@@ -636,19 +636,34 @@ class Game {
     this.player.move(moveVec, dt, isSprinting, cameraYaw);
 
     if (this.camera.currentMode === this.camera.MODES.FIRST_PERSON) {
-      const hasInput = (Math.abs(moveVec.x) + Math.abs(moveVec.z)) > 0.01;
-      if (hasInput) {
-        this.player.rotation = cameraYaw + Math.atan2(moveVec.x, moveVec.z);
-        this.player.targetRotation = this.player.rotation;
-      }
+      // Always lock player rotation to camera yaw in 1st person to prevent head clipping.
+      // Offset by PI because Player.js defines 0 rotation as facing +Z (Backwards), whereas camera yaw 0 is -Z (Forward).
+      this.player.rotation = cameraYaw + Math.PI;
+      this.player.targetRotation = cameraYaw + Math.PI;
     }
 
     // ── 6. Shot charging UI & trajectory preview ──────────────────────────
     if (this.input.shotCharging && !this.ball.inFlight && this._canShoot) {
-      this.hud.showPowerMeter(this.input.shotPower);
-
       const hoopPos  = this._activeHoop.getHoopWorldPosition();
       const playerPos = this.player.getPosition();
+
+      // Initialise auto-aim when starting to charge in Broadcast mode
+      if (!this._wasCharging) {
+        this._wasCharging = true;
+        if (this.camera.currentMode === this.camera.MODES.BROADCAST) {
+          const angleToHoop = Math.atan2(hoopPos.x - playerPos.x, hoopPos.z - playerPos.z);
+          this.camera._yaw = angleToHoop - Math.PI;
+          this.camera._targetYaw = this.camera._yaw;
+        }
+      }
+
+      // Tie player rotation to mouse-controlled yaw while charging in Broadcast mode
+      if (this.camera.currentMode === this.camera.MODES.BROADCAST) {
+        this.player.rotation = this.camera._yaw + Math.PI;
+        this.player.targetRotation = this.player.rotation;
+      }
+
+      this.hud.showPowerMeter(this.input.shotPower);
 
       if (this.input.shotPower > 0.05) {
         // Calculate virtual target in the direction the player is currently facing
@@ -675,6 +690,7 @@ class Game {
       }
 
     } else if (!this.input.shotCharging) {
+      this._wasCharging = false;
       this.ball.showTrajectoryPreview(false);
       if (!this.ball.inFlight) {
         this.hud.hidePowerMeter();

@@ -605,7 +605,7 @@ html, body {
 .pause-btn {
   position: absolute;
   top: 16px;
-  right: 16px;
+  left: 16px;
   background: rgba(10,10,15,0.7);
   border: 1px solid var(--dark-border);
   border-radius: 8px;
@@ -809,7 +809,7 @@ html, body {
   position: fixed;
   top: 50px;
   right: 14px;
-  width: 310px;
+  width: 350px;
   max-height: calc(100vh - 64px);
   overflow-y: auto;
   z-index: 8999;
@@ -1191,4 +1191,45 @@ html, body {
 
 .pp-preset-btn:active {
   transform: scale(0.95);
+}
+
+/* Physics Warnings */
+.pp-warning-box {
+  background: rgba(255, 60, 60, 0.2);
+  border: 1px solid #FF3333;
+  color: #FFAAAA;
+  padding: 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  margin-bottom: 10px;
+  display: none;
+}
+.pp-warning-box.active {
+  display: block;
+}
+.pp-modified {
+  border-color: #FFAA00 !important;
+  color: #FFDD44 !important;
+}
+.pp-scifi {
+  border-color: #FF3333 !important;
+  color: #FFAAAA !important;
+  box-shadow: 0 0 5px rgba(255,50,50,0.5);
+}
+
+.pp-reset-single {
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: #aaa;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-left: 5px;
+  padding: 0 5px;
+  font-size: 14px;
+  line-height: 20px;
+  transition: all 0.2s;
+}
+.pp-reset-single:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
 }

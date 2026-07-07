@@ -115,8 +115,9 @@ class PhysicsEngine {
 
   /** Recompute the drag constant k from current aerodynamic properties. */
   _updateDragK() {
-    this._dragK = (0.5 * this.AIR_DENSITY * this.DRAG_COEFFICIENT * this.BALL_CROSS_AREA)
-                  / this.BALL_MASS;
+    // Prevent divide by zero while preserving the sign for negative mass physics
+    const mass = this.BALL_MASS === 0 ? 1e-6 : this.BALL_MASS;
+    this._dragK = (0.5 * this.AIR_DENSITY * this.DRAG_COEFFICIENT * this.BALL_CROSS_AREA) / mass;
   }
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -136,11 +137,14 @@ class PhysicsEngine {
 
   update(dt) {
     const scaled = dt * this.TIME_SCALE;
-    this._accumulator += scaled;
+    // Accumulate the absolute value so the while loop doesn't freeze for negative time scale
+    this._accumulator += Math.abs(scaled);
 
     let steps = 0;
     while (this._accumulator >= this.FIXED_DT && steps < this.MAX_SUBSTEPS) {
-      this._step(this.FIXED_DT);
+      // Pass negative dt if TIME_SCALE is negative (rewind physics)
+      const stepDt = this.TIME_SCALE < 0 ? -this.FIXED_DT : this.FIXED_DT;
+      this._step(stepDt);
       this._accumulator -= this.FIXED_DT;
       steps++;
     }
@@ -196,6 +200,17 @@ class PhysicsEngine {
       body.velocity.x *= d;
       body.velocity.y *= d;
       body.velocity.z *= d;
+    }
+
+    // ── Terminal Velocity Cap ────────────────────────────────────────────
+    // Prevents NaN / Infinite velocities when user injects extreme non-logical values
+    const MAX_VELOCITY = 100000;
+    const currentSpeed = Math.sqrt(body.velocity.x**2 + body.velocity.y**2 + body.velocity.z**2);
+    if (currentSpeed > MAX_VELOCITY) {
+      const scale = MAX_VELOCITY / currentSpeed;
+      body.velocity.x *= scale;
+      body.velocity.y *= scale;
+      body.velocity.z *= scale;
     }
 
     // ── Position integration ─────────────────────────────────────────────

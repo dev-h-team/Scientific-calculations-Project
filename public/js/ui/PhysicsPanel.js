@@ -19,11 +19,30 @@ class PhysicsPanel {
     this.ballPhys  = ballPhysics;
     this.game      = game;
 
-    // ── Default shot control values ────────────────────────────────────────────
-    this.shotSpeed    = 10.0;    // m/s
-    this.shotAngle    = 48;      // degrees
-    this.spinX        = -8;      // backspin (rad/s): negative=backspin, positive=topspin
-    this.spinY        = 0;       // sidespin (rad/s): negative=left, positive=right
+    // ── Default values for everything ──────────────────────────────────────
+    this.defaults = {
+      GRAVITY:               9.81,
+      TIME_SCALE:            1.0,
+      AIR_DENSITY:           1.225,
+      DRAG_COEFFICIENT:      0.47,
+      BALL_MASS:             0.623,
+      RESTITUTION_FLOOR:     0.72,
+      RESTITUTION_RIM:       0.55,
+      RESTITUTION_BACKBOARD: 0.65,
+      FRICTION_FLOOR:        0.6,
+      FRICTION_RIM:          0.3,
+      MAGNUS_SCALE:          1.0,
+      shotSpeed:             10.0,
+      shotAngle:             48,
+      spinX:                 -8,
+      spinY:                 0
+    };
+
+    // ── Current shot control values ────────────────────────────────────────────
+    this.shotSpeed    = this.defaults.shotSpeed;
+    this.shotAngle    = this.defaults.shotAngle;
+    this.spinX        = this.defaults.spinX;
+    this.spinY        = this.defaults.spinY;
     this._visible     = true;
     this._updateTimer = 0;
 
@@ -54,6 +73,8 @@ class PhysicsPanel {
         <span class="pp-title">⚗ Physics Engine</span>
         <span class="pp-subtitle">Real-time Control</span>
       </div>
+      
+      <div id="pp-warning-box" class="pp-warning-box"></div>
 
       <!-- ENVIRONMENT -->
       <div class="pp-section">
@@ -287,6 +308,18 @@ class PhysicsPanel {
     // Toggle panel visibility
     this.toggleBtn.addEventListener('click', () => this._toggle());
 
+    // Helper: build individual reset button
+    const buildResetBtn = (numEl, defaultVal, applyFn) => {
+      const btn = document.createElement('button');
+      btn.className = 'pp-reset-single';
+      btn.innerHTML = '↺';
+      btn.title = 'Reset this value';
+      btn.style.display = 'none';
+      btn.onclick = () => applyFn(defaultVal);
+      numEl.parentNode.appendChild(btn);
+      return btn;
+    };
+
     // Helper: bind a slider + number pair to a physics param
     const bind = (sliderId, numberId, paramName, convert) => {
       const slider = document.getElementById(sliderId);
@@ -300,7 +333,10 @@ class PhysicsPanel {
         num.value    = v;
         const converted = convert ? convert(v) : v;
         this.physics.setParam(paramName, converted);
+        this._validateValues();
       };
+      
+      buildResetBtn(num, this.defaults[paramName], apply);
 
       slider.addEventListener('input',  () => apply(slider.value));
       num.addEventListener('change',    () => apply(num.value));
@@ -333,8 +369,9 @@ class PhysicsPanel {
       if (!slider || !num) return;
       const apply = (val) => {
         const v = parseFloat(val);
-        if (!isNaN(v)) { slider.value = v; num.value = v; this[prop] = v; }
+        if (!isNaN(v)) { slider.value = v; num.value = v; this[prop] = v; this._validateValues(); }
       };
+      buildResetBtn(num, this.defaults[prop], apply);
       slider.addEventListener('input',  () => apply(slider.value));
       num.addEventListener('change',    () => apply(num.value));
       num.addEventListener('input',     () => apply(num.value));
@@ -350,8 +387,9 @@ class PhysicsPanel {
       if (!slider || !num) return;
       const apply = (val) => {
         const v = parseFloat(val);
-        if (!isNaN(v)) { slider.value = v; num.value = v; this[prop] = v; this._updateSpinViz(); }
+        if (!isNaN(v)) { slider.value = v; num.value = v; this[prop] = v; this._updateSpinViz(); this._validateValues(); }
       };
+      buildResetBtn(num, this.defaults[prop], apply);
       slider.addEventListener('input',  () => apply(slider.value));
       num.addEventListener('change',    () => apply(num.value));
       num.addEventListener('input',     () => apply(num.value));
@@ -386,6 +424,90 @@ class PhysicsPanel {
     document.getElementById('pp-defaults')?.addEventListener('click', () => {
       this._resetDefaults();
     });
+
+    // Run initial validation to color any default overrides
+    this._validateValues();
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  //  VALIDATION & WARNINGS
+  // ═══════════════════════════════════════════════════════════════════════
+
+  _validateValues() {
+    const sliderMap = {
+      GRAVITY:               ['pp-gravity',    'pp-gravity-n'],
+      TIME_SCALE:            ['pp-timescale',  'pp-timescale-n'],
+      AIR_DENSITY:           ['pp-airdensity', 'pp-airdensity-n'],
+      DRAG_COEFFICIENT:      ['pp-drag',       'pp-drag-n'],
+      BALL_MASS:             ['pp-mass',       'pp-mass-n'],
+      RESTITUTION_FLOOR:     ['pp-rest-floor', 'pp-rest-floor-n'],
+      RESTITUTION_RIM:       ['pp-rest-rim',   'pp-rest-rim-n'],
+      RESTITUTION_BACKBOARD: ['pp-rest-bb',    'pp-rest-bb-n'],
+      FRICTION_FLOOR:        ['pp-fric-floor', 'pp-fric-floor-n'],
+      FRICTION_RIM:          ['pp-fric-rim',   'pp-fric-rim-n'],
+      MAGNUS_SCALE:          ['pp-magnus',     'pp-magnus-n'],
+      shotSpeed:             ['pp-shotspeed',  'pp-shotspeed-n'],
+      shotAngle:             ['pp-angle',      'pp-angle-n'],
+      spinX:                 ['pp-spin-x',     'pp-spin-x-n'],
+      spinY:                 ['pp-spin-y',     'pp-spin-y-n'],
+    };
+
+    let warnings = [];
+    
+    for (const [param, defVal] of Object.entries(this.defaults)) {
+      const isPhysics = this.physics[param] !== undefined;
+      const currentVal = isPhysics ? this.physics[param] : this[param];
+      
+      const ids = sliderMap[param];
+      if (!ids) continue;
+      
+      const sl = document.getElementById(ids[0]);
+      const nm = document.getElementById(ids[1]);
+      if (!sl || !nm) continue;
+      
+      const resetBtn = sl.parentNode.querySelector('.pp-reset-single');
+
+      // Reset classes
+      sl.classList.remove('pp-modified', 'pp-scifi');
+      nm.classList.remove('pp-modified', 'pp-scifi');
+      
+      let isSciFi = false;
+      
+      // Define sci-fi conditions
+      if (param === 'TIME_SCALE' && currentVal < 0) { isSciFi = true; warnings.push("⚠️ Negative Time: Physics will rewind."); }
+      else if (param === 'TIME_SCALE' && currentVal > 5) { isSciFi = true; warnings.push("⚠️ High Time Scale: Simulation may jitter."); }
+      if (param === 'DRAG_COEFFICIENT' && currentVal < 0) { isSciFi = true; warnings.push("⚠️ Negative Drag: Ball will accelerate infinitely."); }
+      if (param === 'AIR_DENSITY' && currentVal < 0) { isSciFi = true; warnings.push("⚠️ Negative Air Density: Creates vacuum thrust."); }
+      if (param === 'BALL_MASS' && currentVal <= 0) { isSciFi = true; warnings.push("⚠️ Zero/Negative Mass: Generates infinite acceleration."); }
+      if (param.startsWith('RESTITUTION') && currentVal < 0) { isSciFi = true; warnings.push("⚠️ Negative Restitution: Ball will stick and slide."); }
+      else if (param.startsWith('RESTITUTION') && currentVal > 1) { isSciFi = true; warnings.push("⚠️ High Restitution: Ball generates energy on bounce."); }
+      if (param.startsWith('FRICTION') && currentVal < 0) { isSciFi = true; warnings.push("⚠️ Negative Friction: Generates horizontal speed on contact."); }
+      if (param === 'GRAVITY' && currentVal < 0) { isSciFi = true; warnings.push("⚠️ Negative Gravity: Objects will fall upwards."); }
+
+      let isModified = Math.abs(currentVal - defVal) > 0.001;
+
+      if (isSciFi) {
+        sl.classList.add('pp-scifi');
+        nm.classList.add('pp-scifi');
+      } else if (isModified) {
+        sl.classList.add('pp-modified');
+        nm.classList.add('pp-modified');
+      }
+      
+      if (resetBtn) {
+        resetBtn.style.display = isModified ? 'inline-block' : 'none';
+      }
+    }
+    
+    const wBox = document.getElementById('pp-warning-box');
+    if (wBox) {
+      if (warnings.length > 0) {
+        wBox.innerHTML = warnings.join('<br/>');
+        wBox.classList.add('active');
+      } else {
+        wBox.classList.remove('active');
+      }
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -455,20 +577,6 @@ class PhysicsPanel {
   // ═══════════════════════════════════════════════════════════════════════
 
   _resetDefaults() {
-    const defaults = {
-      GRAVITY:               9.81,
-      TIME_SCALE:            1.0,
-      AIR_DENSITY:           1.225,
-      DRAG_COEFFICIENT:      0.47,
-      BALL_MASS:             0.623,
-      RESTITUTION_FLOOR:     0.72,
-      RESTITUTION_RIM:       0.55,
-      RESTITUTION_BACKBOARD: 0.65,
-      FRICTION_FLOOR:        0.6,
-      FRICTION_RIM:          0.3,
-      MAGNUS_SCALE:          1.0,
-    };
-
     const sliderMap = {
       GRAVITY:               ['pp-gravity',    'pp-gravity-n'],
       TIME_SCALE:            ['pp-timescale',  'pp-timescale-n'],
@@ -483,21 +591,19 @@ class PhysicsPanel {
       MAGNUS_SCALE:          ['pp-magnus',     'pp-magnus-n'],
     };
 
-    for (const [param, val] of Object.entries(defaults)) {
+    for (const [param, ids] of Object.entries(sliderMap)) {
+      const val = this.defaults[param];
       this.physics.setParam(param, val);
-      const ids = sliderMap[param];
-      if (ids) {
-        const sl = document.getElementById(ids[0]);
-        const nm = document.getElementById(ids[1]);
-        if (sl) sl.value = val;
-        if (nm) nm.value = val;
-      }
+      const sl = document.getElementById(ids[0]);
+      const nm = document.getElementById(ids[1]);
+      if (sl) sl.value = val;
+      if (nm) nm.value = val;
     }
 
-    this.shotSpeed = 10.0;
-    this.shotAngle = 48;
-    this.spinX     = -8;
-    this.spinY     = 0;
+    this.shotSpeed = this.defaults.shotSpeed;
+    this.shotAngle = this.defaults.shotAngle;
+    this.spinX     = this.defaults.spinX;
+    this.spinY     = this.defaults.spinY;
     const ss = document.getElementById('pp-shotspeed');
     const sn = document.getElementById('pp-shotspeed-n');
     const as = document.getElementById('pp-angle');
@@ -509,6 +615,7 @@ class PhysicsPanel {
     const syEl = document.getElementById('pp-spin-y');   if (syEl)  syEl.value = 0;
     const syn  = document.getElementById('pp-spin-y-n'); if (syn)   syn.value  = 0;
     this._updateSpinViz();
+    this._validateValues();
   }
 
   // ═══════════════════════════════════════════════════════════════════════
