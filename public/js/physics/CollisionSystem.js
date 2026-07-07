@@ -158,104 +158,104 @@ class CollisionSystem {
   //  BACKBOARD COLLISION
   // ═══════════════════════════════════════════════════════════════════════
 
-  _checkBackboard(body, backboard, radius) {
-    // ── Sphere-AABB overlap test ─────────────────────────────────────────
-    const cx = Math.max(backboard.min.x, Math.min(body.position.x, backboard.max.x));
-    const cy = Math.max(backboard.min.y, Math.min(body.position.y, backboard.max.y));
-    const cz = Math.max(backboard.min.z, Math.min(body.position.z, backboard.max.z));
+  _checkSupportBoxes(body, supportBoxes, radius) {
+    for (const box of supportBoxes) {
+      // ── Sphere-AABB overlap test ─────────────────────────────────────────
+      const cx = Math.max(box.min.x, Math.min(body.position.x, box.max.x));
+      const cy = Math.max(box.min.y, Math.min(body.position.y, box.max.y));
+      const cz = Math.max(box.min.z, Math.min(body.position.z, box.max.z));
 
-    const dx = body.position.x - cx;
-    const dy = body.position.y - cy;
-    const dz = body.position.z - cz;
-    const dist2 = dx * dx + dy * dy + dz * dz;
-    if (dist2 >= radius * radius || dist2 < 1e-8) return;
+      const dx = body.position.x - cx;
+      const dy = body.position.y - cy;
+      const dz = body.position.z - cz;
+      const dist2 = dx * dx + dy * dy + dz * dz;
+      if (dist2 >= radius * radius || dist2 < 1e-8) continue; // Check next box
 
-    // courtFacingZ: +1 for left hoop (ball approaches from +Z),
-    //              -1 for right hoop (ball approaches from -Z)
-    const faceZ = backboard.courtFacingZ ?? 1;
-    const e     = this.physics.RESTITUTION_BACKBOARD;
-    const f     = this.physics.FRICTION_BACKBOARD;
+      const e     = this.physics.RESTITUTION_BACKBOARD;
+      const f     = this.physics.FRICTION_BACKBOARD;
 
-    // ── Dominant-axis normal ─────────────────────────────────────────────
-    // Pick the face with the smallest penetration — that is the face the
-    // ball entered from.  This handles front, top, and side hits correctly:
-    //   front/back → nz ±1  (ball bounces back toward court)
-    //   top        → ny +1  (ball bounces upward, clears the board)
-    //   sides      → nx ±1  (ball deflects sideways)
-    const hw  = (backboard.max.x - backboard.min.x) * 0.5;
-    const hh  = (backboard.max.y - backboard.min.y) * 0.5;
-    const hd  = (backboard.max.z - backboard.min.z) * 0.5;
-    const mx  = (backboard.min.x + backboard.max.x) * 0.5;
-    const my  = (backboard.min.y + backboard.max.y) * 0.5;
-    const mz  = (backboard.min.z + backboard.max.z) * 0.5;
+      // ── Dominant-axis normal ─────────────────────────────────────────────
+      const hw  = (box.max.x - box.min.x) * 0.5;
+      const hh  = (box.max.y - box.min.y) * 0.5;
+      const hd  = (box.max.z - box.min.z) * 0.5;
+      const mx  = (box.min.x + box.max.x) * 0.5;
+      const my  = (box.min.y + box.max.y) * 0.5;
+      const mz  = (box.min.z + box.max.z) * 0.5;
 
-    // True penetration depth along each axis
-    const ovX = (hw + radius) - Math.abs(body.position.x - mx);
-    const ovY = (hh + radius) - Math.abs(body.position.y - my);
-    const ovZ = (hd + radius) - Math.abs(body.position.z - mz);
+      // True penetration depth along each axis
+      const ovX = (hw + radius) - Math.abs(body.position.x - mx);
+      const ovY = (hh + radius) - Math.abs(body.position.y - my);
+      const ovZ = (hd + radius) - Math.abs(body.position.z - mz);
 
-    let nx = 0, ny = 0, nz = 0, overlap;
-    if (ovZ <= ovY && ovZ <= ovX) {
-      nz      = body.position.z < mz ? -1 : 1;
-      overlap = ovZ;
-    } else if (ovY <= ovX) {
-      ny      = body.position.y < my ? -1 : 1;
-      overlap = ovY;
-    } else {
-      nx      = body.position.x < mx ? -1 : 1;
-      overlap = ovX;
-    }
-
-    // Separation (push out)
-    body.position.x += nx * (Math.max(overlap, 0) + 0.002);
-    body.position.y += ny * (Math.max(overlap, 0) + 0.002);
-    body.position.z += nz * (Math.max(overlap, 0) + 0.002);
-
-    // ── Velocity reflection ──────────────────────────────────────────────
-    const vDotN = body.velocity.x * nx + body.velocity.y * ny + body.velocity.z * nz;
-    if (vDotN < 0) {
-      const impulse = -(1 + e) * vDotN;
-      body.velocity.x += impulse * nx;
-      body.velocity.y += impulse * ny;
-      body.velocity.z += impulse * nz;
-
-      // Tangential friction
-      const tx = body.velocity.x - vDotN * nx;
-      const ty = body.velocity.y - vDotN * ny;
-      const tz = body.velocity.z - vDotN * nz;
-      const tSpeed = Math.sqrt(tx * tx + ty * ty + tz * tz);
-      if (tSpeed > 0.01) {
-        const fi = Math.min(f * Math.abs(impulse), tSpeed);
-        body.velocity.x -= (tx / tSpeed) * fi;
-        body.velocity.y -= (ty / tSpeed) * fi;
-        body.velocity.z -= (tz / tSpeed) * fi;
+      let nx = 0, ny = 0, nz = 0, overlap;
+      if (ovZ <= ovY && ovZ <= ovX) {
+        nz      = body.position.z < mz ? -1 : 1;
+        overlap = ovZ;
+      } else if (ovY <= ovX) {
+        ny      = body.position.y < my ? -1 : 1;
+        overlap = ovY;
+      } else {
+        nx      = body.position.x < mx ? -1 : 1;
+        overlap = ovX;
       }
+
+      // Separation (push out)
+      body.position.x += nx * (Math.max(overlap, 0) + 0.002);
+      body.position.y += ny * (Math.max(overlap, 0) + 0.002);
+      body.position.z += nz * (Math.max(overlap, 0) + 0.002);
+
+      // ── Velocity reflection ──────────────────────────────────────────────
+      const vDotN = body.velocity.x * nx + body.velocity.y * ny + body.velocity.z * nz;
+      if (vDotN < 0) {
+        const impulse = -(1 + e) * vDotN;
+        body.velocity.x += impulse * nx;
+        body.velocity.y += impulse * ny;
+        body.velocity.z += impulse * nz;
+
+        // Tangential friction
+        const tx = body.velocity.x - vDotN * nx;
+        const ty = body.velocity.y - vDotN * ny;
+        const tz = body.velocity.z - vDotN * nz;
+        const tSpeed = Math.sqrt(tx * tx + ty * ty + tz * tz);
+        if (tSpeed > 0.01) {
+          const fi = Math.min(f * Math.abs(impulse), tSpeed);
+          body.velocity.x -= (tx / tSpeed) * fi;
+          body.velocity.y -= (ty / tSpeed) * fi;
+          body.velocity.z -= (tz / tSpeed) * fi;
+        }
+      }
+
+      // ── Front-Face Bounce Assist (ONLY for Backboard Front Face) ────────
+      if (box.isBackboard && box.courtFacingZ !== undefined) {
+        const faceZ = box.courtFacingZ;
+        // Only apply the "bounce towards court" hack if it hits the front face
+        if (nz === faceZ) {
+          const totalSpeed = Math.sqrt(
+            body.velocity.x * body.velocity.x +
+            body.velocity.y * body.velocity.y +
+            body.velocity.z * body.velocity.z
+          );
+          const minBounceZ = totalSpeed * 0.25 * e;
+
+          const currentZAwayFromBoard = body.velocity.z * faceZ; 
+          if (currentZAwayFromBoard < minBounceZ) {
+            body.velocity.z = faceZ * Math.max(minBounceZ, 0.4);
+          }
+          
+          // Tiny random X deflection for natural bank-shot feel
+          body.velocity.x += (Math.random() - 0.5) * 0.15;
+        }
+
+        // Emit backboardHit only for actual backboard hits
+        this._emit('backboardHit', {
+          position: { ...body.position },
+          velocity: { ...body.velocity }
+        });
+      }
+
+      // Resolve one collision per frame for stability
+      return;
     }
-
-    // ── Guaranteed court-direction Z component ───────────────────────────
-    // After any backboard contact, always ensure the ball has a Z velocity
-    // component pointing AWAY from the board toward the court.
-    // This prevents top/side edge hits (where nz=0 and vz≈0) from leaving
-    // the ball to fall straight into the basket.
-    const totalSpeed = Math.sqrt(
-      body.velocity.x * body.velocity.x +
-      body.velocity.y * body.velocity.y +
-      body.velocity.z * body.velocity.z
-    );
-    const minBounceZ = totalSpeed * 0.25 * e;   // at least 25% of speed toward court
-
-    const currentZAwayFromBoard = body.velocity.z * faceZ; // positive = moving toward court
-    if (currentZAwayFromBoard < minBounceZ) {
-      body.velocity.z = faceZ * Math.max(minBounceZ, 0.4);
-    }
-
-    // Tiny random X deflection for natural bank-shot feel
-    body.velocity.x += (Math.random() - 0.5) * 0.15;
-
-    this._emit('backboardHit', {
-      position: { x: body.position.x, y: body.position.y, z: body.position.z },
-      velocity: { x: body.velocity.x, y: body.velocity.y, z: body.velocity.z }
-    });
   }
 
   // ═══════════════════════════════════════════════════════════════════════

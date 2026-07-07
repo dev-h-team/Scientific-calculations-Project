@@ -106,7 +106,7 @@ class CameraController {
     // visible simultaneously along the court length (Z axis).
     // Court width (X): ±15 wu, hoops on Z axis ≈ ±24.
     // At X=17 with FOV=80° (vertical), horizontal reach ≈ ±27 wu in Z → covers both hoops.
-    this._broadcastPos    = new THREE.Vector3(17, 6, 0);
+    this._broadcastPos    = new THREE.Vector3(-17, 6, 0);
     this._broadcastLookAt = new THREE.Vector3(0, 4, 0);
 
     // ── FREE / orbit mode ─────────────────────────────────────────────────

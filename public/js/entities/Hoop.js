@@ -36,7 +36,7 @@ class Hoop {
       hoopCenter: null,
       hoopRadius: this.rimRadius,
       rimPoints: [],
-      backboard: null
+      supportBoxes: []
     };
     
     // Net simulation
@@ -109,6 +109,7 @@ class Hoop {
     const brace = new THREE.Mesh(braceGeo, armMat);
     brace.position.set(0, this.hoopHeight - 0.3, 0.4);
     brace.rotation.x = Math.PI / 4;
+    this.brace = brace;
     this.group.add(brace);
   }
 
@@ -335,31 +336,49 @@ class Hoop {
       });
     }
     
-    // Backboard AABB  (world-space coordinates)
-    const boardPos = new THREE.Vector3();
-    this.backboard.getWorldPosition(boardPos);
-
     // The backboard faces the court.
     // Left hoop  (rotation=0):  front face is at +Z → ball comes from +Z side  → normal = +1
     // Right hoop (rotation=π):  front face is at −Z → ball comes from −Z side  → normal = −1
-    // We store this direction so CollisionSystem knows which way to bounce.
     const cosRot = Math.cos(this.group.rotation.y);
     const boardFacingZ = cosRot >= 0 ? 1 : -1;  // +1 for left hoop, -1 for right hoop
 
-    this.collisionData.backboard = {
-      min: {
-        x: boardPos.x - this.backboardW / 2,
-        y: boardPos.y - this.backboardH / 2,
-        z: boardPos.z - this.backboardThickness / 2
-      },
-      max: {
-        x: boardPos.x + this.backboardW / 2,
-        y: boardPos.y + this.backboardH / 2,
-        z: boardPos.z + this.backboardThickness / 2
-      },
-      // Which Z-side the court is on (ball approaches from this direction)
+    // Generate accurate AABBs for all support structures
+    // 1. Backboard
+    const bbBox = new THREE.Box3().setFromObject(this.backboard);
+    this.collisionData.supportBoxes.push({
+      min: { x: bbBox.min.x, y: bbBox.min.y, z: bbBox.min.z },
+      max: { x: bbBox.max.x, y: bbBox.max.y, z: bbBox.max.z },
+      isBackboard: true,
       courtFacingZ: boardFacingZ
-    };
+    });
+
+    // 2. Arm
+    const armBox = new THREE.Box3().setFromObject(this.arm);
+    this.collisionData.supportBoxes.push({
+      min: { x: armBox.min.x, y: armBox.min.y, z: armBox.min.z },
+      max: { x: armBox.max.x, y: armBox.max.y, z: armBox.max.z },
+      isBackboard: false
+    });
+
+    // 3. Pole
+    const poleBox = new THREE.Box3().setFromObject(this.pole);
+    this.collisionData.supportBoxes.push({
+      min: { x: poleBox.min.x, y: poleBox.min.y, z: poleBox.min.z },
+      max: { x: poleBox.max.x, y: poleBox.max.y, z: poleBox.max.z },
+      isBackboard: false
+    });
+
+    // 4. Brace
+    if (this.brace) {
+      const braceBox = new THREE.Box3().setFromObject(this.brace);
+      // We can slightly expand the brace bounding box for smoother collisions 
+      // if needed, but the exact Box3 should be pretty good.
+      this.collisionData.supportBoxes.push({
+        min: { x: braceBox.min.x, y: braceBox.min.y, z: braceBox.min.z },
+        max: { x: braceBox.max.x, y: braceBox.max.y, z: braceBox.max.z },
+        isBackboard: false
+      });
+    }
   }
 
   /**

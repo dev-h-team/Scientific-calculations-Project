@@ -316,6 +316,16 @@ class Game {
 
     const hoopPos  = this._activeHoop.getHoopWorldPosition();
     const shootPos = this.player.getShootPosition();
+    const playerPos = this.player.getPosition();
+
+    // Allow throwing in any direction! 
+    // Calculate a virtual target at the same distance as the hoop, but in the direction the player is facing.
+    const distToHoop = Math.hypot(hoopPos.x - playerPos.x, hoopPos.z - playerPos.z);
+    const targetPos = {
+      x: playerPos.x + Math.sin(this.player.rotation) * distToHoop,
+      y: hoopPos.y,
+      z: playerPos.z + Math.cos(this.player.rotation) * distToHoop
+    };
 
     // Set inFlight before moving ball to prevent hand-pin overwrite
     this.ball.inFlight      = true;
@@ -330,7 +340,7 @@ class Game {
     this.ball.body.velocity.z = 0;
 
     this.ball.shoot(
-      { x: hoopPos.x, y: hoopPos.y, z: hoopPos.z },
+      { x: targetPos.x, y: targetPos.y, z: targetPos.z },
       power,
       angleOffset
     );
@@ -351,7 +361,7 @@ class Game {
       this.camera.playShotCinematic();
     }
 
-    const playerPos = this.player.getPosition();
+    // playerPos is already defined above
     this._lastShotDist  = MathUtils.dist2D(
       { x: playerPos.x, z: playerPos.z },
       { x: hoopPos.x,   z: hoopPos.z   }
@@ -639,16 +649,20 @@ class Game {
 
       const hoopPos  = this._activeHoop.getHoopWorldPosition();
       const playerPos = this.player.getPosition();
-      this.player.targetRotation = Math.atan2(
-        hoopPos.x - playerPos.x,
-        hoopPos.z - playerPos.z
-      );
 
       if (this.input.shotPower > 0.05) {
+        // Calculate virtual target in the direction the player is currently facing
+        const distToHoop = Math.hypot(hoopPos.x - playerPos.x, hoopPos.z - playerPos.z);
+        const targetPos = {
+          x: playerPos.x + Math.sin(this.player.rotation) * distToHoop,
+          y: hoopPos.y,
+          z: playerPos.z + Math.cos(this.player.rotation) * distToHoop
+        };
+
         const shootPos = this.player.getShootPosition();
         const points   = this.ballPhysics.calcTrajectoryPreview(
           { x: shootPos.x, y: shootPos.y, z: shootPos.z },
-          { x: hoopPos.x,  y: hoopPos.y,  z: hoopPos.z  },
+          { x: targetPos.x, y: targetPos.y, z: targetPos.z },
           this.input.shotPower,
           this.input.dragAngle || 0
         );
@@ -697,8 +711,8 @@ class Game {
     for (const hoop of this.hoops) {
       const cd = hoop.collisionData;
 
-      if (cd.backboard) {
-        this.collision._checkBackboard(this.ball.body, cd.backboard, ballRadius);
+      if (cd.supportBoxes && cd.supportBoxes.length > 0) {
+        this.collision._checkSupportBoxes(this.ball.body, cd.supportBoxes, ballRadius);
       }
 
       if (cd.rimPoints && cd.rimPoints.length > 0) {
