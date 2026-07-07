@@ -207,15 +207,17 @@ class CollisionSystem {
       // ── Velocity reflection ──────────────────────────────────────────────
       const vDotN = body.velocity.x * nx + body.velocity.y * ny + body.velocity.z * nz;
       if (vDotN < 0) {
+        // Calculate tangential direction BEFORE modifying velocity!
+        const tx = body.velocity.x - vDotN * nx;
+        const ty = body.velocity.y - vDotN * ny;
+        const tz = body.velocity.z - vDotN * nz;
+
         const impulse = -(1 + e) * vDotN;
         body.velocity.x += impulse * nx;
         body.velocity.y += impulse * ny;
         body.velocity.z += impulse * nz;
 
         // Tangential friction
-        const tx = body.velocity.x - vDotN * nx;
-        const ty = body.velocity.y - vDotN * ny;
-        const tz = body.velocity.z - vDotN * nz;
         const tSpeed = Math.sqrt(tx * tx + ty * ty + tz * tz);
         if (tSpeed > 0.01) {
           const fi = Math.min(f * Math.abs(impulse), tSpeed);

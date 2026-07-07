@@ -250,17 +250,19 @@ class PhysicsEngine {
 
       const vDotN = this._dot(sphere.velocity, plane.normal);
       if (vDotN < 0) {
+        // Calculate tangent BEFORE modifying velocity!
+        const tang = {
+          x: sphere.velocity.x - vDotN * plane.normal.x,
+          y: sphere.velocity.y - vDotN * plane.normal.y,
+          z: sphere.velocity.z - vDotN * plane.normal.z
+        };
+
         const impulse = -(1 + restitution) * vDotN;
         sphere.velocity.x += impulse * plane.normal.x;
         sphere.velocity.y += impulse * plane.normal.y;
         sphere.velocity.z += impulse * plane.normal.z;
 
         // Tangential friction
-        const tang = {
-          x: sphere.velocity.x - vDotN * plane.normal.x,
-          y: sphere.velocity.y - vDotN * plane.normal.y,
-          z: sphere.velocity.z - vDotN * plane.normal.z
-        };
         const tSpeed = this._magnitude(tang);
         if (tSpeed > 0.01) {
           const fi = Math.min(friction * Math.abs(impulse), tSpeed);
@@ -390,17 +392,19 @@ class PhysicsEngine {
       // Velocity reflection with restitution
       const vDotN = sphere.velocity.x * nx + sphere.velocity.y * ny + sphere.velocity.z * nz;
       if (vDotN < 0) {
+        // Calculate tangent BEFORE modifying velocity!
+        const tang = {
+          x: sphere.velocity.x - vDotN * nx,
+          y: sphere.velocity.y - vDotN * ny,
+          z: sphere.velocity.z - vDotN * nz
+        };
+
         const impulse = -(1 + restitution) * vDotN;
         sphere.velocity.x += impulse * nx;
         sphere.velocity.y += impulse * ny;
         sphere.velocity.z += impulse * nz;
 
         // Tangential friction
-        const tang = {
-          x: sphere.velocity.x - vDotN * nx,
-          y: sphere.velocity.y - vDotN * ny,
-          z: sphere.velocity.z - vDotN * nz
-        };
         const tSpeed = this._magnitude(tang);
         if (tSpeed > 0.01) {
           const fi = Math.min(friction * Math.abs(impulse), tSpeed);

@@ -103,28 +103,36 @@ _calcMagnusForce(body) {
 ---
 
 ## 5. التصادم النيوتني والارتداد (Collision & Restitution)
-يعتمد النظام على فيزياء الجسم الصلب والتصادم المرن جزئياً (Inelastic Collision)، حيث تفقد الكرة جزءاً من طاقتها (الارتداد) ويتغير اتجاهها، مع تطبيق قوة احتكاك تقلل من دورانها وسرعتها المنزلقة.
+يعتمد النظام على فيزياء الجسم الصلب والتصادم المرن جزئياً (Inelastic Collision)، حيث تفقد الكرة جزءاً من طاقتها (الارتداد) ويتغير اتجاهها. وتم حديثاً إعادة بناء نظام الاحتكاك المماسي (Tangential Friction) ليحسب متجه الاحتكاك **قبل** تطبيق نبضة الارتداد (Pre-Impulse Velocity) لضمان دقة الفيزياء التامة ومنع توقف الكرة بشكل غير طبيعي.
 
 * **خصائص الأسطح (Coefficients):** مكانها في الثوابت داخل `PhysicsEngine`.
   - أرضية باركيه الملعب: `RESTITUTION_FLOOR = 0.72`
-  - اللوحة الزجاجية: `RESTITUTION_BACKBOARD = 0.65`
+  - اللوحة الزجاجية والدعامات: `RESTITUTION_BACKBOARD = 0.65` (يتم استخدام نظام `supportBoxes` الذي يضم اللوحة، العمود، الذراع الممتد، والدعامة المائلة باستخدام تداخل Sphere-AABB).
   - الطوق المعدني: `RESTITUTION_RIM = 0.55` (لتخفيف قفز الكرة عن الطوق وجعل التسجيل أكثر انسيابية).
-* **مكان التطبيق:** `CollisionSystem.js`. يستخدم معادلات حل التداخل الهندسي لمعرفة مكان الاصطدام بدقة وتصحيحه (Penetration Resolution) لمنع انغراس الكرة.
-* **التنفيذ البرمجي لرد الفعل (Impulse Resolution):**
+* **مكان التطبيق:** `CollisionSystem.js`. يستخدم معادلات حل التداخل الهندسي لمعرفة مكان الاصطدام بدقة وتصحيحه (Penetration Resolution).
+* **التنفيذ البرمجي لرد الفعل والاحتكاك (Impulse Resolution):**
 ```javascript
-// التصادم مع الأرض كمثال (_checkFloor)
-if (body.position.y - radius <= floorY) {
-  // 1. تصحيح الانغراس (Position Resolution)
-  body.position.y = floorY + radius;
+// التصادم مع اللوحة والدعامات كمثال (_checkSupportBoxes)
+const vDotN = body.velocity.x * nx + body.velocity.y * ny + body.velocity.z * nz;
+if (vDotN < 0) {
+  // 1. حساب السرعة المماسية (Tangential) *قبل* تغيير السرعة
+  const tx = body.velocity.x - vDotN * nx;
+  const ty = body.velocity.y - vDotN * ny;
+  const tz = body.velocity.z - vDotN * nz;
   
-  // 2. تطبيق قانون الارتداد على محور النزول
-  if (body.velocity.y < 0) {
-    body.velocity.y = -body.velocity.y * this.RESTITUTION_FLOOR;
+  // 2. تطبيق قانون الارتداد (Impulse)
+  const impulse = -(1 + e) * vDotN;
+  body.velocity.x += impulse * nx;
+  body.velocity.y += impulse * ny;
+  body.velocity.z += impulse * nz;
+
+  // 3. تطبيق الاحتكاك المماسي بناءً على السرعة المماسية الصحيحة
+  const tSpeed = Math.sqrt(tx * tx + ty * ty + tz * tz);
+  if (tSpeed > 0.01) {
+    const fi = Math.min(f * Math.abs(impulse), tSpeed);
+    body.velocity.x -= (tx / tSpeed) * fi;
+    // ...
   }
-  
-  // 3. تطبيق الاحتكاك السطحي لإنقاص الانزلاق ونقل الدوران
-  body.velocity.x *= (1 - this.FRICTION_FLOOR * dt);
-  body.velocity.z *= (1 - this.FRICTION_FLOOR * dt);
 }
 ```
 
@@ -132,6 +140,6 @@ if (body.position.y - radius <= floorY) {
 
 ## كيف تتصل هذه الأنظمة باللعبة؟
 
-1. **`Game.js`**: يمد المحرك بالـ $dt$ وينادي `physics.step(dt)` في كل إطار زمني.
-2. **`BallPhysics.js`**: يدير الخصائص المادية للكرة (الكتلة، القطْر) ويبرمج قوة التسديد. يستخدم خوارزمية (Ballistic Shot Solver) لتحديد السرعة الفائقة بدقة ($v_0$) المطلوبة لإصابة السلة كمرجع للمحاكاة، بناءً على معادلة حركة المقذوفات التفاضلية العكسية.
-3. **`CollisionSystem.js`**: يعمل كمراقب فيزيائي (Physics Observer) بعد كل خطوة للمحرك، حيث يتحقق من التقاطعات بين الأجسام البسيطة (كروي مع مسطح، كروي مع كروي) ويطبق قوانين الاستجابة مباشرةً.
+1. **`Game.js`**: يمد المحرك بالـ $dt$ وينادي `physics.step(dt)` في كل إطار زمني. كما يجمع مدخلات اللاعب ويحسب الهدف الوهمي (Virtual Target) بناءً على اتجاه دوران اللاعب (Free Aiming) بدلاً من الإجبار على التصويب نحو السلة.
+2. **`BallPhysics.js`**: يدير الخصائص المادية للكرة ويبرمج قوة التسديد. يستخدم خوارزمية (Ballistic Shot Solver) لتحديد السرعة الفائقة بدقة ($v_0$) المطلوبة لإصابة الهدف الوهمي كمرجع للمحاكاة، مع الأخذ بالاعتبار نسبة قوة الرمية (Power).
+3. **`CollisionSystem.js`**: يعمل كمراقب فيزيائي (Physics Observer) بعد كل خطوة للمحرك، حيث يتحقق من التقاطعات بين الأجسام البسيطة (الكرة مع `supportBoxes`، أو الكرة مع الطوق) ويطبق قوانين الاستجابة والارتداد مباشرةً.
