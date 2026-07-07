@@ -120,6 +120,10 @@ class InputManager {
 
     // ── Mouse buttons ─────────────────────────────────────────────────────
     window.addEventListener('mousedown', (e) => {
+      // Ignore clicks on UI elements (e.g. dat.gui dashboard, menus)
+      // Only start charging the shot if clicking directly on the canvas
+      if (e.target.tagName !== 'CANVAS') return;
+
       this.mouse.buttons[e.button]           = true;
       this.mouse.buttonsJustPressed[e.button] = true;
 

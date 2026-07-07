@@ -65,7 +65,7 @@ class CameraController {
     this._modeInfo = [
       { name: 'FIRST PERSON', icon: '👁️',  fov: 90,  desc: 'Eye-level view'         },
       { name: 'FOLLOW',       icon: '🎥',  fov: 72,  desc: 'Third-person follow'     },
-      { name: 'BROADCAST',    icon: '📺',  fov: 55,  desc: 'TV broadcast angle'      },
+      { name: 'BROADCAST',    icon: '📺',  fov: 80,  desc: 'Full court side view'     },
       { name: 'FREE',         icon: '🦅',  fov: 65,  desc: 'Auto-orbit overview'     },
       { name: 'BALL CAM',     icon: '🏀',  fov: 75,  desc: 'Locked on the ball'      },
     ];
@@ -101,21 +101,18 @@ class CameraController {
     this._followHeight     = 2.0;
     this._followLerpFactor = 3.5; // multiplier on lerpSpeed
 
-    // ── BROADCAST mode ────────────────────────────────────────────────────
-    this._broadcastSlots = [
-      { pos: new THREE.Vector3(  0, 10, 24), lookAt: new THREE.Vector3(0, 3,  0) },
-      { pos: new THREE.Vector3( 22,  8,  0), lookAt: new THREE.Vector3(0, 3,  0) },
-      { pos: new THREE.Vector3(-22,  8,  0), lookAt: new THREE.Vector3(0, 3,  0) },
-      { pos: new THREE.Vector3(  0, 20,  0), lookAt: new THREE.Vector3(0, 0,  0) },
-    ];
-    this._broadcastIndex = 0;
-    this._broadcastTimer = 0;
-    this._broadcastCycleTime = 12; // seconds before auto-cut
+    // ── BROADCAST mode — single fixed side view ───────────────────────────────
+    // Camera sits on the X-SIDE of the court (not the end) so BOTH hoops are
+    // visible simultaneously along the court length (Z axis).
+    // Court width (X): ±15 wu, hoops on Z axis ≈ ±24.
+    // At X=17 with FOV=80° (vertical), horizontal reach ≈ ±27 wu in Z → covers both hoops.
+    this._broadcastPos    = new THREE.Vector3(17, 6, 0);
+    this._broadcastLookAt = new THREE.Vector3(0, 4, 0);
 
     // ── FREE / orbit mode ─────────────────────────────────────────────────
     this._orbitTheta  = 0;
     this._orbitPhi    = Math.PI / 3.5;
-    this._orbitRadius = 26;
+    this._orbitRadius = 18;   // reduced so FREE stays inside arena (was 26)
     this._orbitTarget = new THREE.Vector3(0, 2, 0);
     this._orbitSpeed  = 0.12; // rad/s auto-rotate
 
@@ -213,11 +210,15 @@ class CameraController {
     this._updateShake(dt);
     this.camera.position.add(this._shakeOffset);
 
-    // ── Hard clamp within arena bounds (safety net) ───────────────────────
-    const m = 0.5;
-    this.camera.position.x = MathUtils.clamp(this.camera.position.x, -17 + m, 17 - m);
-    this.camera.position.z = MathUtils.clamp(this.camera.position.z, -32 + m, 32 - m);
-    this.camera.position.y = MathUtils.clamp(this.camera.position.y, 0.3, 24);
+    // ── Universal arena clamp (ALL modes) ───────────────────────────────────
+    // Based on Court.js exact geometry:
+    //   Walls X: ±(width/2 + 4) = ±19  → clamp camera 1wu inside = ±18
+    //   Walls Z: ±(length/2+4) = ±32   → clamp camera 1wu inside = ±31
+    //   Ceiling Y: 18                  → clamp camera 1wu below  = 17
+    //   Floor  Y: 0                    → clamp camera above ground = 0.8
+    this.camera.position.x = MathUtils.clamp(this.camera.position.x, -18, 18);
+    this.camera.position.z = MathUtils.clamp(this.camera.position.z, -31, 31);
+    this.camera.position.y = MathUtils.clamp(this.camera.position.y, 0.8, 17);
   }
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -269,6 +270,12 @@ class CameraController {
       playerPos.z + cosYaw * cosPitch * dist
     );
 
+    // Clamp desired BEFORE lerping so the camera never tries to reach
+    // a position outside the arena walls — avoids the "frozen on wall" bug
+    desired.x = MathUtils.clamp(desired.x, -18, 18);
+    desired.z = MathUtils.clamp(desired.z, -31, 31);
+    desired.y = MathUtils.clamp(desired.y, 0.8, 17);
+
     // Look target: ball during flight, ahead of player otherwise
     let lookTarget;
     if (ballInFlight && ballPos) {
@@ -288,33 +295,14 @@ class CameraController {
   }
 
   // ═══════════════════════════════════════════════════════════════════════
-  //  MODE 2 — BROADCAST (cinematic fixed angles)
+  //  MODE 2 — BROADCAST (fixed full-court side view)
   // ═══════════════════════════════════════════════════════════════════════
 
-  _updateBroadcast(dt, playerPos, ballPos) {
-    this._broadcastTimer += dt;
-
-    // Auto-cut every N seconds
-    if (this._broadcastTimer >= this._broadcastCycleTime) {
-      this._broadcastTimer = 0;
-      this._broadcastIndex = (this._broadcastIndex + 1) % this._broadcastSlots.length;
-    }
-
-    const slot = this._broadcastSlots[this._broadcastIndex];
-
-    // Move camera to preset position
-    this.camera.position.lerp(slot.pos, Math.min(dt * 2.0, 1));
-
-    // Look toward ball (if available) blended with slot's default target
-    const blendTarget = slot.lookAt.clone();
-    if (ballPos) {
-      blendTarget.lerp(new THREE.Vector3(ballPos.x, ballPos.y * 0.5 + 1, ballPos.z), 0.5);
-    }
-    if (playerPos) {
-      blendTarget.lerp(new THREE.Vector3(playerPos.x * 0.3, blendTarget.y, playerPos.z * 0.3), 0.2);
-    }
-
-    this.target.lerp(blendTarget, Math.min(dt * 3, 1));
+  _updateBroadcast(dt) {
+    // Fully static — camera never moves, never tracks ball or player.
+    // Lerp once to the preset position so switching from other modes is smooth.
+    this.camera.position.lerp(this._broadcastPos, Math.min(dt * 2.0, 1));
+    this.target.lerp(this._broadcastLookAt, Math.min(dt * 2.0, 1));
     this.camera.lookAt(this.target);
   }
 
@@ -323,12 +311,11 @@ class CameraController {
   // ═══════════════════════════════════════════════════════════════════════
 
   _updateFree(dt) {
-    // Auto-rotate
-    this._orbitTheta += dt * this._orbitSpeed;
+    // No auto-rotation — orbit is driven ONLY by mouse/look input.
+    // _yaw  (mouse left/right) → horizontal orbit angle (theta)
+    // _pitch (mouse up/down)   → vertical elevation angle (phi)
+    this._orbitTheta = this._yaw;
 
-    // Mouse drag can speed up / change orbit
-    // (mouse deltas already accumulated into _targetYaw/_targetPitch)
-    // Mirror yaw/pitch as orbit angles in free mode
     const phi = MathUtils.clamp(
       Math.PI / 4 + this._pitch * 0.5,
       0.08,
@@ -361,12 +348,17 @@ class CameraController {
       return;
     }
 
-    // Offset: slightly behind and above the ball (offset changes with ball direction)
-    const offset = new THREE.Vector3(3, 2, 4);
+    // Offset: trail BEHIND the ball along its velocity direction
+    // Camera positions itself opposite to ball's XZ motion, slightly above
+    const bv = this._ballVel || { x: 0, y: 0, z: 1 };
+    const horizSpeed = Math.sqrt(bv.x * bv.x + bv.z * bv.z) + 0.001;
+    const trailX =  (bv.x / horizSpeed) * 4.5;
+    const trailZ =  (bv.z / horizSpeed) * 4.5;
+
     const desired = new THREE.Vector3(
-      ballPos.x + offset.x,
-      ballPos.y + offset.y,
-      ballPos.z + offset.z
+      ballPos.x + trailX,
+      Math.max(ballPos.y + 2.5, 2),    // never go below floor
+      ballPos.z + trailZ
     );
 
     const lerpT = Math.min(dt * this._ballLerpFactor, 1);
@@ -376,6 +368,11 @@ class CameraController {
 
     // Widen FOV a little to show speed
     this._targetFOV = 80;
+  }
+
+  /** Call from Game each frame before update() to give Ball velocity to camera */
+  setBallVelocity(vel) {
+    this._ballVel = vel;
   }
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -447,9 +444,9 @@ class CameraController {
     this._targetFOV = info.fov;
 
     // Mode-specific setup
-    if (modeIndex === this.MODES.BROADCAST) {
-      this._broadcastIndex = (this._broadcastIndex + 1) % this._broadcastSlots.length;
-      this._broadcastTimer = 0;
+    // (BROADCAST no longer cycles slots — it has a single fixed side-view position)
+    if (modeIndex === this.MODES.FREE) {
+      this._orbitTheta = this._yaw; // sync orbit start angle with current yaw
     }
 
     // Show mode indicator in HUD

@@ -8,11 +8,13 @@
  *   • Motion trail (fading orange line during flight)
  *   • Trajectory preview dots (shown while charging shot)
  *   • Dynamic shadow blob (scales with height)
- *   • Glow on score
+ *   • Glow on score, flash on collision
  *
- * Key fix: Ball.shoot() sets inFlight = true and lets the physics engine
- * move the ball naturally.  There is NO teleportation or lerp — the ball
- * follows the ballistic trajectory computed by PhysicsEngine.calcShotVelocity().
+ * Key distinction:
+ *   inFlight       = ball was shot and is still in primary ballistic flight
+ *                    (used for scoring detection & trajectory lock-on).
+ *   physicsActive  = ball is still moving / bouncing (not yet at rest).
+ *   Ball stays physically simulated after landing until R is pressed.
  */
 
 class Ball {
@@ -23,8 +25,6 @@ class Ball {
 
     // ── Dimensions (world units) ──────────────────────────────────────────
     // NBA ball radius: 0.12 m × SCALE(3) = 0.36 wu
-    // Rim radius is 0.2286m × SCALE(3) = 0.6858 wu
-    // This ratio (0.36 / 0.68) is correct for NBA.
     this.radius = ballPhysics.radius * physicsEngine.SCALE;   // 0.36 wu
 
     // ── Physics body ──────────────────────────────────────────────────────
@@ -32,8 +32,14 @@ class Ball {
     physicsEngine.addBody(this.body);
 
     // ── State ─────────────────────────────────────────────────────────────
-    this.inFlight  = false;
-    this.hasScored = false;
+    this.inFlight      = false;  // ball is in primary shot flight (scoring window)
+    this.physicsActive = false;  // ball is still bouncing/rolling (not pinned)
+    this.isHeld        = true;   // ball is in player's hand (pinned to hold position)
+    this.hasScored     = false;
+
+    // ── Collision flash ───────────────────────────────────────────────────
+    this._flashTimer = 0;
+    this._flashType  = null;   // 'floor' | 'rim' | 'backboard'
 
     // ── Trail ─────────────────────────────────────────────────────────────
     this._trailPoints    = [];
@@ -48,6 +54,13 @@ class Ball {
     this._buildTrail();
     this._buildTrajectoryPreview();
     this._buildShadowBlob();
+
+    // ── Quaternion rotation accumulator ──────────────────────────────────
+    // We accumulate rotations via quaternion multiplication to avoid
+    // Euler gimbal lock and get physically correct spin axes.
+    this._rotQ    = new THREE.Quaternion(); // current accumulated rotation
+    this._tmpQ    = new THREE.Quaternion(); // scratch quaternion
+    this._rotAxis = new THREE.Vector3();    // scratch axis
   }
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -215,20 +228,12 @@ class Ball {
   }
 
   // ═══════════════════════════════════════════════════════════════════════
-  //  SHOOTING  (core entry point)
+  //  SHOOTING  (core entry point — hoop-targeted shot)
   // ═══════════════════════════════════════════════════════════════════════
 
   /**
    * Launch the ball toward targetPosition.
-   *
-   * The ball's physics body is already at the correct release point
-   * (set by Game._update before calling this).
-   * We simply apply the impulse and set inFlight = true.
-   * The physics engine then moves the ball naturally every frame.
-   *
-   * @param {Object} targetPosition - hoop centre in world units
-   * @param {number} power          - 0–1 player input
-   * @param {number} angleOffset    - horizontal yaw offset (radians)
+   * inFlight and physicsActive are both set to true.
    */
   shoot(targetPosition, power, angleOffset = 0) {
     const from = {
@@ -237,8 +242,10 @@ class Ball {
       z: this.body.position.z
     };
 
-    this.inFlight  = true;
-    this.hasScored = false;
+    this.inFlight      = true;
+    this.physicsActive = true;
+    this.hasScored     = false;
+    this.body.active   = true;  // reactivate frozen body when shooting
 
     // Apply ballistic impulse via BallPhysics
     this.ballPhysics.applyShot(this.body, from, targetPosition, power, angleOffset, true);
@@ -251,8 +258,41 @@ class Ball {
     this.showTrajectoryPreview(false);
   }
 
+  /**
+   * Launch the ball using explicit speed + angle in camera direction.
+   * Used by Physics Panel free-shot mode.
+   *
+   * @param {number} speedMS  - launch speed in m/s
+   * @param {number} angleDeg - launch elevation in degrees
+   * @param {number} yaw      - horizontal direction (camera yaw, radians)
+   */
+  shootFree(speedMS, angleDeg, yaw) {
+    this.inFlight      = true;
+    this.physicsActive = true;
+    this.hasScored     = false;
+
+    const vel = this.physics.calcFreeShotVelocity(speedMS, MathUtils.toRad(angleDeg), yaw);
+    this.body.velocity.x = vel.x;
+    this.body.velocity.y = vel.y;
+    this.body.velocity.z = vel.z;
+
+    // Add backspin proportional to launch speed
+    const speed         = Math.sqrt(vel.x * vel.x + vel.y * vel.y + vel.z * vel.z);
+    const backspinRate  = speed * 0.12;
+    const dirX          =  Math.sin(yaw);
+    const dirZ          =  Math.cos(yaw);
+    this.body.angularVelocity.x = -dirZ * backspinRate;
+    this.body.angularVelocity.z =  dirX * backspinRate;
+    this.body.angularVelocity.y = 0;
+
+    this.body.active   = true;
+    this.trail.visible = true;
+    this._trailPoints  = [];
+    this.showTrajectoryPreview(false);
+  }
+
   // ═══════════════════════════════════════════════════════════════════════
-  //  RESET
+  //  RESET  (only called on R key press)
   // ═══════════════════════════════════════════════════════════════════════
 
   reset(position) {
@@ -268,12 +308,51 @@ class Ball {
       this.body.angularVelocity.z = 0;
     }
     this.body.rotation = { x: 0, y: 0, z: 0 };
-    this.inFlight  = false;
-    this.hasScored = false;
+    this.body.active    = true;   // reactivate physics so shooting works again
+    this.inFlight       = false;
+    this.physicsActive  = false;
+    this.isHeld         = true;   // ball is in player's hand
+    this.hasScored      = false;
+    this._flashTimer    = 0;
+
+    // Reset quaternion spin accumulator so ball starts stationary-looking
+    this._rotQ.identity();
+    this.mesh.quaternion.identity();
 
     this.trail.visible = false;
     this._trailPoints  = [];
     this.showTrajectoryPreview(false);
+
+    // Clear emissive glow
+    if (this.mesh.material) {
+      this.mesh.material.emissiveIntensity = 0;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  //  COLLISION FLASH
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /**
+   * Briefly flash the ball material when it hits a surface.
+   * Only fires on strong impacts (speed > threshold) to avoid constant flicker.
+   * @param {'floor'|'rim'|'backboard'} type
+   * @param {number} [impactSpeed] - impact speed in m/s (optional, for threshold)
+   */
+  flashCollision(type, impactSpeed = 99) {
+    // Floor bounces are common — only flash for hard floor impacts
+    if (type === 'floor' && impactSpeed < 3.0) return;
+    // Rim and backboard: only flash for meaningful impacts
+    if (impactSpeed < 1.5) return;
+
+    this._flashType  = type;
+    this._flashTimer = 0.12;  // shorter flash
+
+    const colors = { floor: 0xFFDD88, rim: 0xFF5500, backboard: 0x88AAFF };
+    if (this.mesh.material) {
+      this.mesh.material.emissive          = new THREE.Color(colors[type] || 0xFFFFFF);
+      this.mesh.material.emissiveIntensity = 0.45;  // subtle — not blinding
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -321,24 +400,46 @@ class Ball {
       this.body.position.z
     );
 
-    // ── Rotation from angular velocity ────────────────────────────────────
-    if (this.inFlight || this.ballPhysics.isRolling) {
-      if (this.body.angularVelocity) {
-        this.mesh.rotation.x += this.body.angularVelocity.x * dt;
-        this.mesh.rotation.y += this.body.angularVelocity.y * dt;
-        this.mesh.rotation.z += this.body.angularVelocity.z * dt;
-      } else {
-        // Fallback: derive rotation from velocity direction
-        const speed = this.ballPhysics.getSpeed(this.body);
-        if (speed > 0.5) {
-          const rotRate = speed / this.radius;
-          this.mesh.rotation.x += this.body.velocity.z * rotRate * dt * 0.5;
-          this.mesh.rotation.z -= this.body.velocity.x * rotRate * dt * 0.5;
-        }
+    // ── Realistic ball rotation (quaternion accumulator) ─────────────────
+    // Two sources of rotation are combined every frame:
+    //   1. angularVelocity from physics (spin set at launch — backspin etc.)
+    //   2. Rolling-derived rotation from linear velocity (seam rolls on floor)
+    {
+      const av = this.body.angularVelocity;
+      const vx = this.body.velocity.x;
+      const vy = this.body.velocity.y;
+      const vz = this.body.velocity.z;
+
+      // Source 1: Physics angular velocity (spin)
+      // angularVelocity is in rad/s (world). Scale up so it's visible.
+      const AV_SCALE = this.physics.SCALE;   // 3.0 — compensates for WU/m ratio
+      let wx = av ? av.x * AV_SCALE : 0;
+      let wy = av ? av.y * AV_SCALE : 0;
+      let wz = av ? av.z * AV_SCALE : 0;
+
+      // Source 2: Rolling from linear velocity (contributes when ball moves)
+      // Rolling: ω_roll = v_horiz / r  along the axis perp to motion
+      const horizSpeed = Math.sqrt(vx * vx + vz * vz);
+      if (horizSpeed > 0.05) {
+        const rollRate = horizSpeed / this.radius;  // rad/s
+        // Axis perpendicular to motion direction in XZ plane
+        const ax = vz / horizSpeed;
+        const az = -vx / horizSpeed;
+        wx += ax * rollRate;
+        wz += az * rollRate;
+      }
+
+      // Apply combined rotation if there's any spin
+      const angSpeed = Math.sqrt(wx * wx + wy * wy + wz * wz);
+      if (angSpeed > 0.001 && (this.physicsActive || this.inFlight || this.ballPhysics.isRolling)) {
+        this._rotAxis.set(wx / angSpeed, wy / angSpeed, wz / angSpeed);
+        this._tmpQ.setFromAxisAngle(this._rotAxis, angSpeed * dt);
+        this._rotQ.premultiply(this._tmpQ);
+        this.mesh.quaternion.copy(this._rotQ);
       }
     }
 
-    // ── Trail ─────────────────────────────────────────────────────────────
+    // ── Trail (only during primary flight) ───────────────────────────────
     if (this.inFlight) {
       this._updateTrail();
     }
@@ -346,10 +447,41 @@ class Ball {
     // ── Shadow blob ───────────────────────────────────────────────────────
     this._updateShadowBlob();
 
+    // ── Collision flash fade-out ──────────────────────────────────────────
+    if (this._flashTimer > 0) {
+      this._flashTimer -= dt;
+      const intensity = Math.max(0, (this._flashTimer / 0.12)) * 0.45;
+      if (this.mesh.material) {
+        this.mesh.material.emissiveIntensity = intensity;
+      }
+      if (this._flashTimer <= 0) {
+        this._flashTimer = 0;
+        if (this.mesh.material && !this.hasScored) {
+          this.mesh.material.emissiveIntensity = 0;
+        }
+      }
+    }
+
     // ── Auto-land detection ───────────────────────────────────────────────
+    // inFlight ends when ball reaches near-rest; physicsActive stays true.
+    // physicsActive ends only when truly stationary OR reset() called.
     if (this.inFlight && this.ballPhysics.isAtRest(this.body, 0.5)) {
       this.inFlight      = false;
       this.trail.visible = false;
+      // physicsActive remains true → ball keeps bouncing freely
+    }
+
+    if (this.physicsActive && !this.inFlight) {
+      if (this.ballPhysics.isAtRest(this.body, 0.15)) {
+        this.physicsActive  = false;
+        // Freeze the physics body so gravity cannot pull the ball through
+        // the floor after it comes to rest. It will stay exactly where it
+        // landed until the player presses R (→ reset() reactivates it).
+        this.body.active    = false;
+        this.body.velocity.x = 0;
+        this.body.velocity.y = 0;
+        this.body.velocity.z = 0;
+      }
     }
   }
 

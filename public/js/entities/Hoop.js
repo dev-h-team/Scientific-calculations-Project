@@ -166,15 +166,15 @@ class Hoop {
       this.group.add(mesh);
     });
     
-    // Shooting box (inner rectangle on backboard)
+    // Shooting box (inner rectangle on backboard) — enlarged for visibility
     const boxMat = new THREE.MeshBasicMaterial({
       color: 0xFF6600,
       transparent: true,
-      opacity: 0.8
+      opacity: 0.9
     });
     
-    const boxW = 0.59, boxH = 0.45;
-    const boxFrameThick = 0.03;
+    const boxW = 0.76, boxH = 0.58;
+    const boxFrameThick = 0.04;
     
     const boxFrames = [
       [boxW, boxFrameThick, 0, boxH / 2],
@@ -335,10 +335,17 @@ class Hoop {
       });
     }
     
-    // Backboard AABB
+    // Backboard AABB  (world-space coordinates)
     const boardPos = new THREE.Vector3();
     this.backboard.getWorldPosition(boardPos);
-    
+
+    // The backboard faces the court.
+    // Left hoop  (rotation=0):  front face is at +Z → ball comes from +Z side  → normal = +1
+    // Right hoop (rotation=π):  front face is at −Z → ball comes from −Z side  → normal = −1
+    // We store this direction so CollisionSystem knows which way to bounce.
+    const cosRot = Math.cos(this.group.rotation.y);
+    const boardFacingZ = cosRot >= 0 ? 1 : -1;  // +1 for left hoop, -1 for right hoop
+
     this.collisionData.backboard = {
       min: {
         x: boardPos.x - this.backboardW / 2,
@@ -349,7 +356,9 @@ class Hoop {
         x: boardPos.x + this.backboardW / 2,
         y: boardPos.y + this.backboardH / 2,
         z: boardPos.z + this.backboardThickness / 2
-      }
+      },
+      // Which Z-side the court is on (ball approaches from this direction)
+      courtFacingZ: boardFacingZ
     };
   }
 

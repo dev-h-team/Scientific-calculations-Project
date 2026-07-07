@@ -32,7 +32,7 @@ class GameState {
     
     // Time
     this.PERIOD_DURATION = 120; // 2 minutes per period (shortened for fun)
-    this.SHOT_CLOCK_DURATION = 24;
+    this.SHOT_CLOCK_DURATION = 120; // Changed to 2 minutes per user request
     this.gameTime = this.PERIOD_DURATION;
     this.shotClock = this.SHOT_CLOCK_DURATION;
     this.period = 1;

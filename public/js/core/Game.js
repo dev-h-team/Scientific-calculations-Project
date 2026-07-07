@@ -8,13 +8,15 @@
  *   • Manages game state transitions
  *   • Connects all event systems
  *
- * Key improvements over the original:
- *   1. Player.move() now receives cameraYaw for camera-relative movement
- *   2. InputManager.update(dt) called FIRST every frame so Space-bar
- *      power is current before the HUD reads it
- *   3. Ball launch position is set correctly from player.getShootPosition()
+ * Key improvements:
+ *   1. Player.move() receives cameraYaw for camera-relative movement
+ *   2. InputManager.update(dt) called FIRST every frame
+ *   3. Ball launch position set from player.getShootPosition()
  *   4. Trajectory preview uses the new ballistic solver
- *   5. Shot cooldown reset also resets ball to player hand
+ *   5. Ball stays in physics after landing — only R resets it
+ *   6. Camera defaults to BROADCAST (side view) for collision monitoring
+ *   7. PhysicsPanel provides full runtime control over all physics constants
+ *   8. Free-shot mode: fire at explicit speed+angle in camera direction
  */
 
 class Game {
@@ -39,8 +41,10 @@ class Game {
     this.particles    = null;
 
     // ── UI ────────────────────────────────────────────────────────────────
-    this.hud          = null;
+    this.hud           = null;
     this.notifications = null;
+    this.state         = null;
+    this.physicsPanel  = null;
 
     // ── Game loop ─────────────────────────────────────────────────────────
     this._lastTime    = 0;
@@ -50,7 +54,7 @@ class Game {
     // ── Shot state ────────────────────────────────────────────────────────
     this._canShoot       = true;
     this._shotCooldown   = 0;
-    this._SHOT_COOLDOWN  = 1.5;   // seconds between shots
+    this._SHOT_COOLDOWN  = 1.5;
     this._activeHoop     = null;
     this._lastShotDist   = 0;
     this._lastShotPower  = 0;
@@ -58,7 +62,7 @@ class Game {
     // ── AI ────────────────────────────────────────────────────────────────
     this._aiTimer        = 0;
     this._aiShotInterval = 8;
-    
+
     // ── Shooter Aim Mode ──────────────────────────────────────────────────
     this._wasAiming      = false;
     this._preAimMode     = null;
@@ -73,65 +77,55 @@ class Game {
   async _init() {
     try {
       window.gameLogger.info('Game initialization started');
-      
+
       this._updateLoading(10, 'Creating renderer...');
       const container = document.getElementById('canvas-container');
       if (!container) throw new Error('Canvas container not found!');
       this.renderer = new Renderer(container);
-      window.gameLogger.info('Renderer initialized');
 
       this._updateLoading(20, 'Setting up camera...');
       this.camera = new CameraController(this.renderer);
-      window.gameLogger.info('Camera initialized');
 
       this._updateLoading(30, 'Initializing input...');
       this.input = new InputManager();
-      window.gameLogger.info('Input initialized');
 
       this._updateLoading(35, 'Setting up audio...');
       this.audio = new AudioManager();
-      window.gameLogger.info('Audio initialized');
 
       this._updateLoading(40, 'Building physics engine...');
       this.physics     = new PhysicsEngine();
       this.ballPhysics = new BallPhysics(this.physics);
       this.collision   = new CollisionSystem(this.physics);
-      window.gameLogger.info('Physics systems initialized');
 
       this._updateLoading(50, 'Building court...');
       this.court = new Court(this.renderer.scene);
-      window.gameLogger.info('Court built');
 
       this._updateLoading(60, 'Building hoops...');
       this._buildHoops();
-      window.gameLogger.info('Hoops built');
 
       this._updateLoading(70, 'Creating ball...');
       this.ball = new Ball(this.renderer.scene, this.physics, this.ballPhysics);
-      window.gameLogger.info('Ball created');
 
       this._updateLoading(80, 'Creating player...');
       this.player = new Player(this.renderer.scene, this.physics, 0xFF6600);
-      window.gameLogger.info('Player created');
 
       this._updateLoading(85, 'Setting up particles...');
       this.particles = new ParticleSystem(this.renderer.scene);
-      window.gameLogger.info('Particles initialized');
 
       this._updateLoading(90, 'Initializing UI...');
       this.hud           = new HUD();
       this.notifications = new Notifications();
       this.state         = new GameState();
-      window.gameLogger.info('UI and State initialized');
 
       this._updateLoading(95, 'Connecting systems...');
       this._connectSystems();
       this._setupMenuHandlers();
-      window.gameLogger.info('Systems connected');
+
+      // ── Physics Panel (last, after all systems ready) ──────────────────
+      this.physicsPanel = new PhysicsPanel(this.physics, this.ballPhysics, this);
 
       this._updateLoading(100, 'Ready!');
-      window.gameLogger.info('Initialization complete, showing menu');
-      this._startGameLoop(); // Start the physics and rendering in the background
+      this._startGameLoop();
       setTimeout(() => this._showMenu(), 800);
     } catch (err) {
       window.gameLogger.error('CRITICAL INITIALIZATION ERROR:', err);
@@ -163,6 +157,9 @@ class Game {
     this.collision.on('floorBounce', (data) => {
       this.audio.playBounce(data.speed * 0.5);
       this.particles.bounceDust(data.position, data.speed);
+      const speedMS = data.speed / this.physics.SCALE;
+      this.ball?.flashCollision('floor', speedMS);  // only flashes on hard impacts
+      this.physicsPanel?.logCollision('floor', speedMS);
     });
 
     this.collision.on('rimHit', (data) => {
@@ -170,10 +167,16 @@ class Game {
       this.particles.rimSparks(data.position);
       this._activeHoop.flashRim();
       this.state.recordRimHit();
+      const speedMS = data.speed / this.physics.SCALE;
+      this.ball?.flashCollision('rim', speedMS);
+      this.physicsPanel?.logCollision('rim', speedMS);
     });
 
-    this.collision.on('backboardHit', () => {
+    this.collision.on('backboardHit', (data) => {
       this.audio.playBackboardHit();
+      const speedMS = (data?.speed || 0) / this.physics.SCALE;
+      this.ball?.flashCollision('backboard', speedMS);
+      this.physicsPanel?.logCollision('backboard', speedMS);
     });
 
     this.collision.on('scored', (data) => {
@@ -217,6 +220,8 @@ class Game {
       this.hud.show();
       this._resetBallToPlayer();
       this._startGameLoop();
+      // Default to BROADCAST (side view) for best collision visibility
+      this.camera.setMode(this.camera.MODES.BROADCAST);
       this.input.requestPointerLock(document.body);
     });
 
@@ -227,6 +232,8 @@ class Game {
       this.hud.show();
       this._resetBallToPlayer();
       this._startGameLoop();
+      // Default to BROADCAST side view in practice mode
+      this.camera.setMode(this.camera.MODES.BROADCAST);
       this.input.requestPointerLock(document.body);
     });
 
@@ -277,11 +284,11 @@ class Game {
   // ═══════════════════════════════════════════════════════════════════════
 
   _onKeyDown(code) {
+    // R resets ball to player — the ONLY way to get it back
     if (code === 'KeyR') this._resetBallToPlayer();
 
     if (code === 'KeyC') {
       this.camera.cycleMode();
-      // The camera itself shows its own HUD indicator now via _showModeIndicator()
     }
 
     if (code === 'Escape' && this.state.isActive()) {
@@ -294,30 +301,30 @@ class Game {
   }
 
   /**
-   * Fire a shot.
+   * Fire a hoop-targeted shot (standard gameplay).
    * Called when the player releases Space / mouse button.
    */
   _onShotRelease(payload) {
     if (!this.state.isActive()) return;
     if (!this._canShoot)        return;
+    // Allow re-shooting even if ball is still bouncing (physicsActive)
+    // But NOT if it's still in primary flight
     if (this.ball.inFlight)     return;
 
     const power       = MathUtils.clamp(payload.power || 0.5, 0.05, 1.0);
     const angleOffset = payload.angleOffset || 0;
 
-    // ── Target & launch positions ─────────────────────────────────────────
     const hoopPos  = this._activeHoop.getHoopWorldPosition();
     const shootPos = this.player.getShootPosition();
 
-    // ── Apply shot physics ────────────────────────────────────────────────
-    // Set inFlight true BEFORE moving the ball to prevent hand-pinning logic from overwriting it
-    this.ball.inFlight = true;
+    // Set inFlight before moving ball to prevent hand-pin overwrite
+    this.ball.inFlight      = true;
+    this.ball.physicsActive = true;
+    this.ball.isHeld        = false;  // ball leaves player's hand
 
-    // ── Teleport ball body to release point ───────────────────────────────
     this.ball.body.position.x = shootPos.x;
     this.ball.body.position.y = shootPos.y;
     this.ball.body.position.z = shootPos.z;
-    // Zero out any residual velocity from hand-pinning
     this.ball.body.velocity.x = 0;
     this.ball.body.velocity.y = 0;
     this.ball.body.velocity.z = 0;
@@ -328,31 +335,74 @@ class Game {
       angleOffset
     );
 
-    // ── Player animation ──────────────────────────────────────────────────
     this.player.playShotAnimation(0.4);
 
-    // ── Shot cooldown ─────────────────────────────────────────────────────
     this._canShoot     = false;
     this._shotCooldown = this._SHOT_COOLDOWN;
 
-    // ── Stats ─────────────────────────────────────────────────────────────
     this.state.stats.shots++;
     this.hud.updateStats(this.state.stats.shots, this.state.stats.made);
     this.hud.hidePowerMeter();
 
-    // ── Camera cinematic ──────────────────────────────────────────────────
-    // Only play cinematic if NOT in first-person mode
-    if (power > 0.35 && this.camera.currentMode !== this.camera.MODES.FIRST_PERSON) {
+    // Cinematic shot cam — ONLY triggers from FOLLOW mode.
+    // BROADCAST, FREE, FIRST_PERSON and BALL CAM all remain static/unchanged
+    // after a shot; they never auto-switch to ball tracking.
+    if (power > 0.35 && this.camera.currentMode === this.camera.MODES.FOLLOW) {
       this.camera.playShotCinematic();
     }
 
-    // ── Record for 3-pointer check ────────────────────────────────────────
     const playerPos = this.player.getPosition();
     this._lastShotDist  = MathUtils.dist2D(
       { x: playerPos.x, z: playerPos.z },
       { x: hoopPos.x,   z: hoopPos.z   }
     );
     this._lastShotPower = power;
+  }
+
+  /**
+   * Fire a free shot (Physics Panel mode) — explicit speed + angle + direction + spin.
+   * @param {number} speedMS  - launch speed in m/s
+   * @param {number} angleDeg - elevation angle in degrees
+   * @param {number} [spinX=0]  - backspin(-) / topspin(+)  in rad/s
+   * @param {number} [spinY=0]  - sidespin L(-) / R(+)       in rad/s
+   */
+  _fireFreeSshot(speedMS, angleDeg, spinX = 0, spinY = 0) {
+    // Release ball from hand
+    this.ball.isHeld        = false;
+    this.ball.inFlight      = true;
+    this.ball.physicsActive = true;
+    // Place ball at player shoot position
+    const shootPos = this.player.getShootPosition();
+    this.ball.body.position.x = shootPos.x;
+    this.ball.body.position.y = shootPos.y;
+    this.ball.body.position.z = shootPos.z;
+    this.ball.body.velocity.x = 0;
+    this.ball.body.velocity.y = 0;
+    this.ball.body.velocity.z = 0;
+
+    // Fire in the direction the camera is facing
+    const yaw = this.camera.getYaw();
+    this.ball.shootFree(speedMS, angleDeg, yaw);
+
+    // Apply spin: angularVelocity in world units
+    // spinX = backspin/topspin (rotation around camera-right axis)
+    // spinY = sidespin (rotation around world Y axis)
+    if (this.ball.body.angularVelocity) {
+      // Rotate spinX into the camera's local X axis (perpendicular to look direction)
+      const camRight_X =  Math.cos(yaw);  // right vector X component
+      const camRight_Z = -Math.sin(yaw);  // right vector Z component
+      this.ball.body.angularVelocity.x = spinX * camRight_Z + 0;
+      this.ball.body.angularVelocity.y = spinY;
+      this.ball.body.angularVelocity.z = spinX * camRight_X;
+    }
+
+    this._canShoot     = false;
+    this._shotCooldown = this._SHOT_COOLDOWN;
+
+    if (this.state.isActive()) {
+      this.state.stats.shots++;
+      this.hud.updateStats(this.state.stats.shots, this.state.stats.made);
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -388,9 +438,8 @@ class Game {
     this.hud.updateScore(this.state.homeScore, this.state.awayScore);
     this.hud.updateStats(this.state.stats.shots, this.state.stats.made);
 
-    setTimeout(() => {
-      if (!this.ball.inFlight) this._resetBallToPlayer();
-    }, 2000);
+    // After score: ball falls through the net and bounces — no auto-reset
+    // Player presses R to retrieve it
   }
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -404,6 +453,7 @@ class Game {
       y: playerPos.y + 1.2,
       z: playerPos.z
     });
+    this.ball.isHeld   = true;   // ball is now in player's hand
     this._canShoot     = true;
     this._shotCooldown = 0;
     this.hud.hidePowerMeter();
@@ -501,24 +551,21 @@ class Game {
 
   _loop(timestamp) {
     this._frameId = requestAnimationFrame((t) => this._loop(t));
-    
+
     try {
-      // Use performance.now() to avoid timestamp mismatches between rAF and performance.now
       const now = performance.now();
       let dt = (now - this._lastTime) / 1000;
-      
-      // Prevent negative dt and cap dt to 50ms to prevent spiral-of-death on tab resume
+
       if (dt < 0) dt = 0;
       if (dt > 0.05) dt = 0.05;
-      
+
       this._lastTime = now;
       const time = now / 1000;
 
       this._update(dt, time);
       this._render(time);
     } catch (error) {
-      window.gameLogger.error("Game Loop Error:", error);
-      // Don't stop the loop, but maybe slow it down or skip this frame
+      window.gameLogger.error('Game Loop Error:', error);
     }
   }
 
@@ -536,7 +583,7 @@ class Game {
 
     if (this.state.current === this.state.STATES.PAUSED) return;
 
-    // ── 1. Update input FIRST so shotPower is current this frame ──────────
+    // ── 1. Update input FIRST so shotPower is current this frame ─────────
     this.input.update(dt);
 
     // ── 2. Game state (timers) ────────────────────────────────────────────
@@ -544,30 +591,27 @@ class Game {
     this.hud.updateClock(this.state.gameTime, this.state.period);
     this.hud.updateShotClock(this.state.shotClock);
 
-    // ── 3. Camera mouse look & arrow keys ────────────────────────────────────────────────
+    // ── 3. Camera mouse look & arrow keys ────────────────────────────────
     if (this.input.mouse.deltaX !== 0 || this.input.mouse.deltaY !== 0) {
       this.camera.setMouseDelta(this.input.mouse.deltaX, this.input.mouse.deltaY);
     }
     const camArrows = this.input.getCameraMoveVector();
     if (camArrows.x !== 0 || camArrows.y !== 0) {
-      // Arrow keys act like mouse delta, scaling with dt to run independently of framerate
       this.camera.setMouseDelta(camArrows.x * 1200 * dt, -camArrows.y * 1200 * dt);
     }
-    
-    // ── 3.5. Shooter Mode (Hold RMB) & Zoom ───────────────────────────────
+
+    // ── 3.5. Shooter Mode (Hold RMB) & Zoom ─────────────────────────────
     const isRmbDown = this.input.isMouseButtonDown(2);
     if (isRmbDown && !this._wasAiming) {
       this._wasAiming = true;
       this._preAimMode = this.camera.currentMode;
-      // Switch to First Person (Shooter Mode) if not already in it
       if (this.camera.currentMode !== this.camera.MODES.FIRST_PERSON) {
-         this.camera.setMode(this.camera.MODES.FIRST_PERSON);
+        this.camera.setMode(this.camera.MODES.FIRST_PERSON);
       }
     } else if (!isRmbDown && this._wasAiming) {
       this._wasAiming = false;
-      // Revert to previous camera mode
       if (this._preAimMode !== null) {
-         this.camera.setMode(this._preAimMode);
+        this.camera.setMode(this._preAimMode);
       }
     }
 
@@ -575,27 +619,15 @@ class Game {
       this.camera.addZoom(this.input.mouse.scrollDelta);
     }
 
-    // ── 4. Camera update (Early update to get correct rotation for movement) ──
-    const playerPosForCam = this.player ? this.player.getPosition() : null;
-    const ballPosForCam   = this.ball ? this.ball.getPosition() : null;
-    if (this.camera) {
-      // NOTE: We update it later now to prevent jitter.
-    }
-
     // ── 5. Player movement (camera-relative) ─────────────────────────────
     const moveVec     = this.input.getMoveVector();
     const isSprinting = this.input.isSprinting();
-    // Use getYaw() - the authoritative yaw from CameraController.
-    // This works for BOTH follow and first-person modes without corruption.
     const cameraYaw   = this.camera.getYaw();
     this.player.move(moveVec, dt, isSprinting, cameraYaw);
-    
-    // In first-person mode: force player facing to match camera yaw instantly
-    // so the player always runs in the direction the camera faces.
+
     if (this.camera.currentMode === this.camera.MODES.FIRST_PERSON) {
       const hasInput = (Math.abs(moveVec.x) + Math.abs(moveVec.z)) > 0.01;
       if (hasInput) {
-        // Player rotation follows camera yaw directly for authentic FPS feel
         this.player.rotation = cameraYaw + Math.atan2(moveVec.x, moveVec.z);
         this.player.targetRotation = this.player.rotation;
       }
@@ -603,10 +635,8 @@ class Game {
 
     // ── 6. Shot charging UI & trajectory preview ──────────────────────────
     if (this.input.shotCharging && !this.ball.inFlight && this._canShoot) {
-      // Show power meter (shotPower already updated by input.update)
       this.hud.showPowerMeter(this.input.shotPower);
 
-      // Force player to face the active hoop while charging
       const hoopPos  = this._activeHoop.getHoopWorldPosition();
       const playerPos = this.player.getPosition();
       this.player.targetRotation = Math.atan2(
@@ -614,7 +644,6 @@ class Game {
         hoopPos.z - playerPos.z
       );
 
-      // Trajectory preview dots
       if (this.input.shotPower > 0.05) {
         const shootPos = this.player.getShootPosition();
         const points   = this.ballPhysics.calcTrajectoryPreview(
@@ -626,7 +655,6 @@ class Game {
         this.ball.showTrajectoryPreview(true, points);
       }
 
-      // Audio feedback (tick every 10% increment)
       const prevPower = this.input.shotPower - dt * (1 / this.input.MAX_CHARGE_TIME);
       if (Math.floor(this.input.shotPower * 10) !== Math.floor(prevPower * 10)) {
         this.audio.playShotCharge(this.input.shotPower);
@@ -643,8 +671,9 @@ class Game {
     if (!this._canShoot) {
       this._shotCooldown -= dt;
       if (this._shotCooldown <= 0) {
-        this._canShoot = true;
-        if (!this.ball.inFlight) this._resetBallToPlayer();
+        this._canShoot     = true;
+        this._shotCooldown = 0;
+        // Do NOT auto-reset the ball — player must press R
       }
     }
 
@@ -655,8 +684,9 @@ class Game {
     const floorY     = 0;
     const ballRadius = this.ball.radius;
 
-    // Floor
-    if (this.ball.body.position.y - ballRadius <= floorY + 0.01) {
+    // Floor — check whenever ball is physicsActive OR in flight
+    if ((this.ball.inFlight || this.ball.physicsActive) &&
+        this.ball.body.position.y - ballRadius <= floorY + 0.01) {
       this.collision._checkFloor(this.ball.body, ballRadius);
     }
 
@@ -687,13 +717,14 @@ class Game {
     }
 
     // ── 9. Entity updates ─────────────────────────────────────────────────
-    // Pin ball to player's hand when not in flight
-    if (!this.ball.inFlight) {
+    // Pin ball to player's hand ONLY when the ball is flagged as held
+    // (i.e. the player called _resetBallToPlayer and got it back).
+    // After a shot the ball stays wherever it lands — player presses R to retrieve.
+    if (this.ball.isHeld) {
       const holdPos = this.player.getHoldingPosition();
       this.ball.body.position.x = holdPos.x;
       this.ball.body.position.y = holdPos.y;
       this.ball.body.position.z = holdPos.z;
-      // Zero velocity so physics doesn't drift it away
       this.ball.body.velocity.x = 0;
       this.ball.body.velocity.y = 0;
       this.ball.body.velocity.z = 0;
@@ -705,20 +736,29 @@ class Game {
     this.court.update(time);
     this.particles.update(dt);
 
-    // ── 10. Camera update ─────────────────────────────────────────────────────
+    // ── 10. Camera update ─────────────────────────────────────────────────
     if (this.camera) {
       const pPosCam = this.player ? this.player.getPosition() : null;
       const bPosCam = this.ball ? this.ball.getPosition() : null;
+      // Give ball velocity to camera so BALL CAM trails behind actual motion
+      if (this.ball?.body?.velocity) {
+        this.camera.setBallVelocity(this.ball.body.velocity);
+      }
       this.camera.update(dt, pPosCam, bPosCam, this.ball ? this.ball.inFlight : false);
     }
 
-    // ── 11. AI opponent ───────────────────────────────────────────────────
+    // ── 11. Physics Panel telemetry ───────────────────────────────────────
+    if (this.physicsPanel && this.ball) {
+      this.physicsPanel.update(dt, this.ball.body, this.ballPhysics.bounceCount);
+    }
+
+    // ── 12. AI opponent ───────────────────────────────────────────────────
     if (!this.state.isPractice) this._updateAI(dt);
 
-    // ── 12. Active hoop selection ─────────────────────────────────────────
+    // ── 13. Active hoop selection ─────────────────────────────────────────
     this._updateActiveHoop();
 
-    // ── 13. Clear per-frame input flags ───────────────────────────────────
+    // ── 14. Clear per-frame input flags ───────────────────────────────────
     this.input.clearFrameState();
   }
 
@@ -728,7 +768,6 @@ class Game {
 
   _updateActiveHoop() {
     const z = this.player.getPosition().z;
-    // Shoot at the hoop on the opposite side of the court
     this._activeHoop = z >= 0 ? this.hoops[0] : this.hoops[1];
   }
 

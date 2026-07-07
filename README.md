@@ -138,7 +138,7 @@ Uses a **fixed timestep accumulator** (1/120s) with **semi-implicit Euler integr
 
 ```bash
 # 1. Clone or extract the project
-cd basketball3d
+cd Scientific-calculations-Project
 
 # 2. Install dependencies
 npm install
@@ -195,7 +195,7 @@ npm run dev
 ## Project Architecture
 
 ```
-basketball3d/
+Scientific-calculations-Project/
 ├── server.js                    # Express server entry point
 ├── package.json                 # Project manifest
 ├── README.md                    # This file

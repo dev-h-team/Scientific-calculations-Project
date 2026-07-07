@@ -777,3 +777,418 @@ html, body {
 
 /* ---- Selection ---- */
 ::selection { background: rgba(255,107,0,0.3); }
+
+/* ══════════════════════════════════════════════════════════
+   PHYSICS PANEL
+   ══════════════════════════════════════════════════════════ */
+
+#physics-toggle {
+  position: fixed;
+  top: 14px;
+  right: 14px;
+  z-index: 9000;
+  background: rgba(0,0,0,0.75);
+  color: #00FFAA;
+  border: 1px solid #00FFAA44;
+  border-radius: 8px;
+  padding: 7px 16px;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  transition: all 0.2s ease;
+}
+
+#physics-toggle:hover  { background: rgba(0,255,170,0.12); border-color: #00FFAA88; }
+#physics-toggle.pp-active { background: rgba(0,255,170,0.15); border-color: #00FFAA; color: #fff; }
+
+/* Panel container */
+#physics-panel {
+  position: fixed;
+  top: 50px;
+  right: 14px;
+  width: 310px;
+  max-height: calc(100vh - 64px);
+  overflow-y: auto;
+  z-index: 8999;
+  background: rgba(8, 12, 22, 0.94);
+  border: 1px solid rgba(0,255,170,0.2);
+  border-radius: 12px;
+  backdrop-filter: blur(18px);
+  box-shadow: 0 8px 40px rgba(0,0,0,0.7), 0 0 0 1px rgba(0,255,170,0.06);
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 13px;
+  color: #cdd6f4;
+  padding: 0 0 8px;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+#physics-panel.pp-hidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(10px);
+}
+
+/* Custom scrollbar for panel */
+#physics-panel::-webkit-scrollbar { width: 4px; }
+#physics-panel::-webkit-scrollbar-track { background: transparent; }
+#physics-panel::-webkit-scrollbar-thumb { background: rgba(0,255,170,0.25); border-radius: 2px; }
+
+/* Header */
+.pp-header {
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid rgba(0,255,170,0.12);
+  background: linear-gradient(135deg, rgba(0,255,170,0.07) 0%, transparent 100%);
+}
+
+.pp-title {
+  display: block;
+  font-size: 15px;
+  font-weight: 700;
+  color: #00FFAA;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+.pp-subtitle {
+  display: block;
+  font-size: 10px;
+  color: rgba(0,255,170,0.5);
+  letter-spacing: 1.5px;
+  margin-top: 2px;
+}
+
+/* Sections */
+.pp-section {
+  padding: 10px 14px 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+
+.pp-section:last-child { border-bottom: none; }
+
+.pp-section-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: rgba(0,255,170,0.7);
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.pp-subsection-label {
+  font-size: 10px;
+  color: rgba(205,214,244,0.4);
+  letter-spacing: 1px;
+  margin: 6px 0 4px;
+  text-transform: uppercase;
+}
+
+/* Row (label + slider + number) */
+.pp-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 7px;
+  gap: 6px;
+}
+
+.pp-row label {
+  flex: 0 0 100px;
+  font-size: 12px;
+  color: #cdd6f4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pp-unit {
+  font-size: 10px;
+  color: rgba(205,214,244,0.4);
+  margin-left: 2px;
+}
+
+.pp-control {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  gap: 6px;
+}
+
+/* Slider */
+.pp-control input[type="range"] {
+  flex: 1;
+  height: 3px;
+  background: rgba(0,255,170,0.15);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.pp-control input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #00FFAA;
+  border: 2px solid #0A0A0F;
+  box-shadow: 0 0 6px rgba(0,255,170,0.5);
+  cursor: pointer;
+}
+
+.pp-control input[type="range"]::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #00FFAA;
+  border: 2px solid #0A0A0F;
+  cursor: pointer;
+}
+
+/* Number input */
+.pp-num {
+  width: 58px;
+  background: rgba(0,0,0,0.4);
+  border: 1px solid rgba(0,255,170,0.2);
+  border-radius: 5px;
+  color: #00FFAA;
+  font-family: 'Rajdhani', monospace;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 5px;
+  text-align: right;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.pp-num:focus { border-color: #00FFAA88; }
+
+/* Fire & Reset buttons */
+.pp-fire-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.pp-fire-btn {
+  flex: 1;
+  background: linear-gradient(135deg, #FF4444 0%, #CC2200 100%);
+  color: #fff;
+  border: none;
+  border-radius: 7px;
+  padding: 8px 0;
+  font-family: 'Oswald', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-shadow: 0 3px 12px rgba(255,68,68,0.3);
+}
+
+.pp-fire-btn:hover  { filter: brightness(1.15); transform: translateY(-1px); }
+.pp-fire-btn:active { transform: translateY(0); filter: brightness(0.9); }
+
+.pp-reset-btn {
+  flex: 1;
+  background: rgba(255,255,255,0.06);
+  color: rgba(205,214,244,0.8);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 7px;
+  padding: 8px 0;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.pp-reset-btn:hover { background: rgba(255,255,255,0.1); color: #fff; }
+
+/* Telemetry readout */
+.pp-readout { padding-bottom: 10px; }
+
+.pp-telemetry-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.pp-tel-item {
+  background: rgba(0,0,0,0.35);
+  border: 1px solid rgba(0,255,170,0.1);
+  border-radius: 6px;
+  padding: 6px 8px;
+  text-align: center;
+}
+
+.pp-tel-label {
+  display: block;
+  font-size: 9px;
+  letter-spacing: 1.5px;
+  color: rgba(0,255,170,0.55);
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+
+.pp-tel-value {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  color: #00FFAA;
+  font-family: 'Rajdhani', monospace;
+  white-space: nowrap;
+}
+
+/* Collision Log */
+.pp-collision-log {
+  margin-top: 10px;
+  background: rgba(0,0,0,0.3);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 7px;
+  overflow: hidden;
+}
+
+.pp-col-header {
+  font-size: 9px;
+  letter-spacing: 2px;
+  color: rgba(205,214,244,0.35);
+  text-transform: uppercase;
+  padding: 5px 10px;
+  background: rgba(0,0,0,0.2);
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+
+.pp-col-entry {
+  padding: 4px 10px;
+  font-size: 11px;
+  color: #cdd6f4;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+  transition: background 0.3s ease;
+}
+
+.pp-col-entry:last-child { border-bottom: none; }
+
+.pp-col-entry.pp-col-new {
+  background: rgba(0,255,170,0.12);
+}
+
+.pp-col-entry b { color: #fff; }
+
+/* Defaults button */
+.pp-footer { padding: 8px 14px; }
+
+.pp-defaults-btn {
+  width: 100%;
+  background: rgba(255,255,255,0.04);
+  color: rgba(205,214,244,0.55);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 7px;
+  padding: 7px 0;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 12px;
+  letter-spacing: 1px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.pp-defaults-btn:hover { color: #fff; background: rgba(255,255,255,0.08); }
+
+/* ══════════════════════════════════════════════════════════
+   SPIN CONTROL SECTION
+   ══════════════════════════════════════════════════════════ */
+
+/* Spin visualizer container */
+.pp-spin-viz {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 12px;
+}
+
+/* The "ball" sphere that shows spin direction */
+.pp-spin-ball {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #ff8833, #cc4400 60%, #1a0800);
+  border: 2px solid rgba(255,136,51,0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  transition: box-shadow 0.3s ease;
+}
+
+/* Arrow inside the spin ball */
+.pp-spin-arrow {
+  font-size: 22px;
+  line-height: 1;
+  color: #00FFAA;
+  text-shadow: 0 0 8px currentColor;
+  transition: transform 0.25s ease, color 0.25s ease;
+  user-select: none;
+}
+
+/* Spin label below the ball */
+.pp-spin-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  color: rgba(0,255,170,0.7);
+  text-transform: uppercase;
+  min-height: 14px;
+  text-align: center;
+  transition: color 0.25s ease;
+}
+
+/* Axis tag labels: TOP / BACK / L / R */
+.pp-spin-tag {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: rgba(205,214,244,0.4);
+  text-transform: uppercase;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Preset spin buttons row */
+.pp-spin-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.pp-preset-btn {
+  flex: 1;
+  min-width: 48px;
+  background: rgba(255,255,255,0.05);
+  color: rgba(205,214,244,0.75);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 5px;
+  padding: 5px 4px;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: center;
+}
+
+.pp-preset-btn:hover {
+  background: rgba(0,255,170,0.1);
+  border-color: rgba(0,255,170,0.3);
+  color: #00FFAA;
+}
+
+.pp-preset-btn:active {
+  transform: scale(0.95);
+}
